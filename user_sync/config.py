@@ -37,7 +37,8 @@ DEFAULT_DASHBOARD_ACCESSOR_CONFIG_FILENAME_FORMAT = 'dashboard-accessor-{organiz
 class ConfigLoader(object):
     def __init__(self, caller_options):
         '''
-        loads the configuration, given the configuration file info
+        loads the configuration, given the specified configuration override
+        options.
         :type caller_options: dict
         '''
         # default configuration options
@@ -61,20 +62,15 @@ class ConfigLoader(object):
             'username_filter_regex': None,
         }
         
-        # merge custom options with our default options
-        self.update_options(caller_options)   
-
-        # get the main config filename
+        self.update_options(caller_options)
         main_config_filename = options.get('main_config_filename')
-        
-        # halt if the config file does not exist
         if (not os.path.isfile(main_config_filename)):
             raise user_sync.error.AssertionException('Config file does not exist: %s' % (main_config_filename))  
         
+        # this is used to track which directory source filters were accessed,
+        # so we can check later which were unused. 
         self.directory_source_filters_accessed = set()        
         
-        # load the actual configuration file content and build the
-        # configuration object
         self.logger = logger = logging.getLogger('config')
         logger.info("Using main config file: %s", main_config_filename)
         
@@ -97,10 +93,9 @@ class ConfigLoader(object):
 
     def get_dashboard_options_for_owning(self):
         '''
-        load and return dashboard configuration for the owning organization
+        load and return dashboard options for the owning organization
         :rtype dict
         '''
-        # load the default dashboard configuration file
         owning_config_filename = None
 
         # get the owning dashboard configuration path, if the user entered one
@@ -111,14 +106,10 @@ class ConfigLoader(object):
             if owning_config_filenames:
                 owning_config_filename = self.main_config_content.get_relative_filename(owning_config_filenames[0])
         
-        # get the default owning dashboard configuration filename, if no
-        # custom one was provided
         if not owning_config_filename:
             owning_config_filename = self.main_config_content.get_relative_filename(DEFAULT_DASHBOARD_OWNING_CONFIG_FILENAME)
 
         additional_owning_config_sources = []
-        
-        # add custom test configuration
         additional_owning_config_sources.append({
             'test_mode': self.options['test_mode']
         })
@@ -128,7 +119,8 @@ class ConfigLoader(object):
     
     def get_dashboard_options_for_accessors(self):
         '''
-        load and return dashboard configuration for accessors
+        load and return dashboard configuration for accessors. Basically this
+        processes the main configuration files' 
         :rtype dict
         '''
         # get the dashboard configuration settings
@@ -178,8 +170,6 @@ class ConfigLoader(object):
                     accessor_config_filename = self.main_config_content.get_relative_filename(accessor_config_filenames[0])
 
             additional_accessor_config_sources = []
-            
-            # add test mode sources
             additional_accessor_config_sources.append({
                 'test_mode': self.options['test_mode']
             })

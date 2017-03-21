@@ -31,7 +31,7 @@ from user_sync.config import ObjectConfig
 
 class ConfigLoaderTest(unittest.TestCase):
     @mock.patch('os.path.isfile')
-    @mock.patch('user_sync.config.ConfigLoader.load_from_yaml')
+    @mock.patch('user_sync.config.load_from_yaml')
     def setUp(self, mock_yaml, mock_isfile):
         mock_isfile.return_value = True
         self.conf_load = ConfigLoader({'options': 'testOpt'})
@@ -84,7 +84,7 @@ class ConfigLoaderTest(unittest.TestCase):
     @mock.patch('user_sync.config.ConfigLoader.get_dict_from_sources')
     def test_create_dashboard_options(self, mock_dict):
         mock_dict.side_effect = [{'enterprise': {'org_id': 'test1'}}, 'test2']
-        self.assertEquals(self.conf_load.create_dashboard_options('', ''), {'enterprise': 'test2'},
+        self.assertEquals(self.conf_load.create_dashboard_options('', '', ''), {'enterprise': 'test2'},
                           'enterprise section is processed')
 
     @mock.patch('user_sync.config.DictConfig.get_string')
