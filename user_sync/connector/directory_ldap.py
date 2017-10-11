@@ -195,6 +195,7 @@ class LDAPDirectoryConnector(object):
         base_dn = six.text_type(options['base_dn'])
 
         user_attribute_names = [six.text_type('givenName'), six.text_type('sn'), six.text_type('c')]
+        user_attribute_names.append(six.text_type('uid'))    # can be used for looking up containing groups
         user_attribute_names.extend(self.user_identity_type_formatter.get_attribute_names())
         user_attribute_names.extend(self.user_email_formatter.get_attribute_names())
         user_attribute_names.extend(self.user_username_formatter.get_attribute_names())
@@ -272,6 +273,9 @@ class LDAPDirectoryConnector(object):
             source_attributes['c'] = c_value
             if c_value is not None:
                 user['country'] = c_value
+            uid_value = LDAPValueFormatter.get_attribute_value(record, six.text_type('uid'))
+            source_attributes['uid'] = uid_value
+            user['member_groups'] = find_member_groups(dn, uid_value if uid_value else six.text_type(''))
 
             if extended_attributes is not None:
                 for extended_attribute in extended_attributes:
