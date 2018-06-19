@@ -115,7 +115,7 @@ class ConfigLoader(object):
         # --connector
         connector_spec = self.args['connector'] or options['connector']
         connector_type = user_sync.helper.normalize_string(connector_spec[0])
-        if connector_type in ["ldap", "okta"]:
+        if connector_type in ["ldap", "okta", "oneroster"]:
             if len(connector_spec) > 1:
                 raise AssertionException('Must not specify a file (%s) with connector type %s' %
                                          (connector_spec[0], connector_type))
