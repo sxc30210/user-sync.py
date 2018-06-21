@@ -84,7 +84,6 @@ class OneRosterConnector(object):
 
         host = builder.require_string_value('host')
         api_token = builder.require_string_value('api_token')
-        hello = builder.require_string_value('hello')
 
         # Assemble data from YAML into options object
         options = builder.get_options()
@@ -165,17 +164,17 @@ class OneRosterConnector(object):
         users = {
             'CN=Jake Sisko,OU=People,DC=perficientads,DC=com': {
                 'identity_type': 'federatedID',
-                'username': 'jsisko@perficientads.com',
+                'username': 'jsisko3@perficientads.com',
                 'domain': 'perficientads.com',
                 'firstname': 'Jake',
                 'lastname': 'Sisko',
-                'email': 'jsisko@perficientads.com',
+                'email': 'jsisko3@perficientads.com',
                 'groups': [
                     'Perficient ADS Adobe'
                 ],
                 'country': 'US',
                 'source_attributes': {
-                    'email': 'jsisko@perficientads.com',
+                    'email': 'jsisko3@perficientads.com',
                     'identity_type': None,
                     'username': None,
                     'domain': None,

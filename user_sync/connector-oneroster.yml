@@ -115,4 +115,3 @@ user_email_format: "{email}"
 # the encoding specified by the string_encoding setting, above.
 #user_country_code_format: "{countryCode}"
 
-hello: unused
