@@ -18,10 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import okta
+import requests
+import json
 import six
 import string
-from okta.framework.OktaError import OktaError
+
 
 import user_sync.config
 import user_sync.connector.helper
@@ -70,7 +71,8 @@ class OneRosterConnector(object):
         builder.set_string_value('group_filter_format',
                                  '{group}')
         builder.set_string_value('all_users_filter',
-                                 'user.status == "ACTIVE"')
+                                 '{user|students|teachers}')
+        builder.set_string_value('group_name', '{group_name}')
         builder.set_string_value('string_encoding', 'utf8')
         builder.set_string_value('user_identity_type_format', None)
         builder.set_string_value('user_email_format', six.text_type('{email}'))
@@ -82,23 +84,44 @@ class OneRosterConnector(object):
         builder.set_string_value('user_identity_type', None)
         builder.set_string_value('logger_name', self.name)
 
+        #Values needed to query API
         host = builder.require_string_value('host')
-        api_token = builder.require_string_value('api_token')
+        api_token = builder.require_string_value('api_token_endpoint')
+        password = builder.require_string_value('password')
+        username = builder.require_string_value('username')
+
+
 
         # Assemble data from YAML into options object
         options = builder.get_options()
 
 
 
-        OKTAValueFormatter.encoding = options['string_encoding']
+        ONEROSTERValueFormatter.encoding = options['string_encoding']
+        #added for oneroster
+        self.group_name = ONEROSTERValueFormatter(options['group_name'])
+        self.group_filter = ONEROSTERValueFormatter(options['group_filter'])
+        self.user_filter = ONEROSTERValueFormatter(options['user_filter'])
+
+        api_token = Authenticator(username=username, password=password, token_endpoint=api_token).retrieve_api_token()
+        conn = Connection(host_name=host, api_token=api_token)
+        source_id = conn.get_sourced_id(self.group_filter, self.group_name)
+
+        users_list = conn.make_call(self.group_filter, self.user_filter, source_id)
+
+
+
+
+        #end added for oneroster
+
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
-        self.user_identity_type_formatter = OKTAValueFormatter(options['user_identity_type_format'])
-        self.user_email_formatter = OKTAValueFormatter(options['user_email_format'])
-        self.user_username_formatter = OKTAValueFormatter(options['user_username_format'])
-        self.user_domain_formatter = OKTAValueFormatter(options['user_domain_format'])
-        self.user_given_name_formatter = OKTAValueFormatter(options['user_given_name_format'])
-        self.user_surname_formatter = OKTAValueFormatter(options['user_surname_format'])
-        self.user_country_code_formatter = OKTAValueFormatter(options['user_country_code_format'])
+        self.user_identity_type_formatter = ONEROSTERValueFormatter(options['user_identity_type_format'])
+        self.user_email_formatter = ONEROSTERValueFormatter(options['user_email_format'])
+        self.user_username_formatter = ONEROSTERValueFormatter(options['user_username_format'])
+        self.user_domain_formatter = ONEROSTERValueFormatter(options['user_domain_format'])
+        self.user_given_name_formatter = ONEROSTERValueFormatter(options['user_given_name_format'])
+        self.user_surname_formatter = ONEROSTERValueFormatter(options['user_surname_format'])
+        self.user_country_code_formatter = ONEROSTERValueFormatter(options['user_country_code_format'])
 
         self.users_client = None
         self.groups_client = None
@@ -106,6 +129,8 @@ class OneRosterConnector(object):
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
         self.options = options
         caller_config.report_unused_values(logger)
+
+
 
         # if not host.startswith('https://'):
         #     if "://" in host:
@@ -161,29 +186,31 @@ class OneRosterConnector(object):
         #
         # return six.itervalues(user_by_uid)
 
-        users = {
-            'CN=Jake Sisko,OU=People,DC=perficientads,DC=com': {
-                'identity_type': 'federatedID',
-                'username': 'jsisko3@perficientads.com',
-                'domain': 'perficientads.com',
-                'firstname': 'Jake',
-                'lastname': 'Sisko',
-                'email': 'jsisko3@perficientads.com',
-                'groups': [
-                    'Perficient ADS Adobe'
-                ],
-                'country': 'US',
-                'source_attributes': {
-                    'email': 'jsisko3@perficientads.com',
-                    'identity_type': None,
-                    'username': None,
-                    'domain': None,
-                    'givenName': 'Jake',
-                    'sn': 'Sisko',
-                    'c': 'US'
-                }
-            }
-        }
+        # users = {
+        #     'CN=Jake Sisko,OU=People,DC=perficientads,DC=com': {
+        #         'identity_type': 'federatedID',
+        #         'username': 'jsisko3@perficientads.com',
+        #         'domain': 'perficientads.com',
+        #         'firstname': 'Jake',
+        #         'lastname': 'Sisko',
+        #         'email': 'jsisko3@perficientads.com',
+        #         'groups': [
+        #             'Perficient ADS Adobe'
+        #         ],
+        #         'country': 'US',
+        #         'source_attributes': {
+        #             'email': 'jsisko3@perficientads.com',
+        #             'identity_type': None,
+        #             'username': None,
+        #             'domain': None,
+        #             'givenName': 'Jake',
+        #             'sn': 'Sisko',
+        #             'c': 'US'
+        #         }
+        #     }
+        # }
+
+        users = conn.make_call(OneRosterConnector.group_filter)
 
         return six.itervalues(users)
 
@@ -208,6 +235,32 @@ class OneRosterConnector(object):
         else:
             for result in results:
                 if result.profile.name == group:
+                    return result
+
+        return None
+
+#   Added
+    def find_group_name(self, group_name):
+        """
+        :type group_name: str
+        :rtype UserGroup
+        """
+        group_name = group_name.strip()
+        options = self.options
+        group_name_format = options['group_name_format']
+        try:
+            results = self.groups_client.get_groups(query=group_filter_format.format(group=group))
+        except KeyError as e:
+            raise AssertionException("Bad format key in group query (%s): %s" % (group_filter_format, e))
+        except OktaError as e:
+            self.logger.warning("Unable to query group")
+            raise AssertionException("Okta error querying for group: %s" % e)
+
+        if results is None:
+            self.logger.warning("No group name for: %s", group_name)
+        else:
+            for result in results:
+                if result.profile.name == group_name:
                     return result
 
         return None
@@ -251,7 +304,7 @@ class OneRosterConnector(object):
     def convert_user(self, record, extended_attributes):
 
         source_attributes = {}
-        source_attributes['login'] = login = OKTAValueFormatter.get_profile_value(record,'login')
+        source_attributes['login'] = login = ONEROSTERValueFormatter.get_profile_value(record,'login')
         email, last_attribute_name = self.user_email_formatter.generate_value(record)
         email = email.strip() if email else None
         if not email:
@@ -329,7 +382,7 @@ class OneRosterConnector(object):
         type: attributes: list(str)
         """
 
-        attr_dict = OKTAValueFormatter.get_extended_attribute_dict(attributes)
+        attr_dict = ONEROSTERValueFormatter.get_extended_attribute_dict(attributes)
 
         try:
             self.logger.info("Calling okta SDK get_users with the following %s", filter_string)
@@ -351,7 +404,7 @@ class OneRosterConnector(object):
             raise AssertionException("Error filtering with predicate (%s): %s" % (filter_string, e))
 
 
-class OKTAValueFormatter(object):
+class ONEROSTERValueFormatter(object):
     encoding = 'utf8'
 
     def __init__(self, string_format):

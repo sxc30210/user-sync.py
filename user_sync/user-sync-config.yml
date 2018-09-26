@@ -176,7 +176,11 @@ directory_users:
         - "Perficient ADS Group"
     - directory_group: "DS9"
       adobe_groups:
-        - "Starship Adobe" 
+        - "Starship Adobe"
+
+#    - directory_gorup: "classes :: Algebra I - Fall :: students"
+#      adobe_groups:
+#        - "Student All Licenses"
 
         # The limits section provides processing limits which can help ensure that
 # User Sync jobs do not exceed expected guardrails in their operation

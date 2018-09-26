@@ -1,4 +1,4 @@
-# This is a sample configuration file for the okta connector type.
+# This is a sample configuration file for the oneroster connector type.
 #
 # Okta is an identity hosting company that supports being the Identity Provider
 # for Adobe Enterprise Federated ID.
@@ -12,22 +12,28 @@
 # You must specify both of these settings.  The token should be protected.
 # For more information on getting an Okta API Token, see:
 # http://developer.okta.com/docs/api/getting_started/getting_a_token.html
-host: "sample-817042.oktapreview.com"
-api_token: "00R_KJEaIcgAswrlO_sample_ZdgxC5scYZn8IZ-zi"
+
+host: "https://mockroster.io/"
+#Endpoints to retrieve your api token
+#oAuth2 endpoint
+api_token_endpoint: "https://mockroster.io/oauth/token"
+
+#credentials to oneroster
+username: 'oruser'
+password: 'secret'
 
 # (required) group_filter_format (default given below)
 # specifies the string format used to construct a group query.
 # {group} is replaced with the name of the group to find.
-group_filter_format: "{group}"
+group_filter_format: "classes/"
 
 # (required) all_users_filter (default given below)
-# specifies the string filter used to find all users in the directory.
-# Filter Examples:
-#   Filter user based on countryCode attribute in user profile
-#      all_users_filter: 'user.profile.countryCode == "MX"'
-#   Filter user based on status of ACTIVE
-#      all_users_filter: 'user.status == "ACTIVE"'
-all_users_filter: 'user.status == "ACTIVE"'
+#type of users that will be targets option include(users | students | teachers)
+all_users_filter: '/students'
+
+
+#Specific Groups that will be mapped from One Roster to Admin Console
+group_name: 'Algebra I - Fall'
 
 # (optional) default_identity_type (no default)
 # specifies the identity type of the dashboard user to create.
