@@ -46,12 +46,10 @@ def connector_initialize(options):
     return state
 
 
-def connector_load_users_and_groups(state, groups=None, extended_attributes=None, all_users=True):
+def connector_load_users_and_groups(state, extended_attributes=None):
     """
     :type state: OneRosterConnector
-    :type groups: list(str)
     :type extended_attributes: list(str)
-    :type all_users: bool
     :rtype (bool, iterable(dict))
     """
 
@@ -133,28 +131,31 @@ class OneRosterConnector(object):
         """
 
         extended_attributes = [] #hardcoded for now
+        user_object = dict()
 
         auth = Authenticator(self.username, self.password, self.api_token)
         api_token = auth.retrieve_api_token()
 
         conn = Connection(self.host, api_token=api_token)
 
-        sourced_id = conn.get_sourced_id(self.group_filter, self.group_name)
+        if self.group_name is not None:
+            sourced_id = conn.get_sourced_id(self.group_filter, self.group_name)
 
-        response = conn.make_call(self.group_filter, self.user_filter, sourced_id)
+        response = conn.make_call(self.group_filter, self.user_filter, sourced_id or "")
 
         rp = ResultParser()
         users_result = rp.parse_results(response, extended_attributes or [])
-
-        users = self.convert_user(users_result, extended_attributes or [])
-
-        return six.itervalues(users)
+        for user in users_result:
+            updated_user = self.convert_user(user, extended_attributes or [])
+            user_object[user['sourcedId']] = updated_user
+            
+        return six.itervalues(user_object)
 
 
 # Values missing from API call that are needed: identity_type, username??, domain, country
 # I'm thinking that we can pass the user records from parse_results to this function, which will use values from oneroster.YML&Usersync.YML along with the user record to construct the final user object
     def convert_user(self, user_record, extended_attributes):
-        user_record['login'] = login = ONEROSTERValueFormatter.get_profile_value(record,'login')
+        user_record['login'] = login = ONEROSTERValueFormatter.get_profile_value(user_record,'login')
 
         user = user_sync.connector.helper.create_blank_user()
 
@@ -437,6 +438,7 @@ class ResultParser:
         source_attributes['email'] = user['email']
         source_attributes['givenName'] = user['givenName']
         source_attributes['familyName'] = user['familyName']
+
 
         if extended_attributes is not None:
             for attribute in extended_attributes:
