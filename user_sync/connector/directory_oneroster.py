@@ -55,7 +55,7 @@ def connector_load_users_and_groups(state, groups=None, extended_attributes=None
     :rtype (bool, iterable(dict))
     """
 
-    return state.load_users_and_groups(groups or [], extended_attributes or [], all_users)
+    return state.load_users_and_groups(extended_attributes or [])
 
 
 class OneRosterConnector(object):
@@ -84,11 +84,12 @@ class OneRosterConnector(object):
         builder.set_string_value('user_identity_type', None)
         builder.set_string_value('logger_name', self.name)
 
-        #Values needed to query API
+        #Values needed to query API, values from YML file
         host = builder.require_string_value('host')
         api_token = builder.require_string_value('api_token_endpoint')
         password = builder.require_string_value('password')
         username = builder.require_string_value('username')
+
 
 
 
@@ -98,21 +99,15 @@ class OneRosterConnector(object):
 
 
         ONEROSTERValueFormatter.encoding = options['string_encoding']
-        #added for oneroster
+        #added for oneroster yml file, values placed into usable objects
+        self.username = ONEROSTERValueFormatter(username)
+        self.password = ONEROSTERValueFormatter(password)
+        self.host = ONEROSTERValueFormatter(host)
+        self.api_token = ONEROSTERValueFormatter(api_token)
+
         self.group_name = ONEROSTERValueFormatter(options['group_name'])
         self.group_filter = ONEROSTERValueFormatter(options['group_filter'])
         self.user_filter = ONEROSTERValueFormatter(options['user_filter'])
-
-        api_token = Authenticator(username=username, password=password, token_endpoint=api_token).retrieve_api_token()
-        conn = Connection(host_name=host, api_token=api_token)
-        source_id = conn.get_sourced_id(self.group_filter, self.group_name)
-
-        users_list = conn.make_call(self.group_filter, self.user_filter, source_id)
-
-
-
-
-        #end added for oneroster
 
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
         self.user_identity_type_formatter = ONEROSTERValueFormatter(options['user_identity_type_format'])
@@ -123,200 +118,47 @@ class OneRosterConnector(object):
         self.user_surname_formatter = ONEROSTERValueFormatter(options['user_surname_format'])
         self.user_country_code_formatter = ONEROSTERValueFormatter(options['user_country_code_format'])
 
-        self.users_client = None
-        self.groups_client = None
+
         self.logger = logger = user_sync.connector.helper.create_logger(options)
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
         self.options = options
         caller_config.report_unused_values(logger)
 
-
-
-        # if not host.startswith('https://'):
-        #     if "://" in host:
-        #         raise AssertionException("Okta protocol must be https")
-        #     host = "https://" + host
-        #
-        # self.user_by_uid = {}
-        #
-        # logger.debug('%s initialized with options: %s', self.name, options)
-        #
-        # logger.info('Connecting to: %s', host)
-
-        # try:
-        #     self.users_client = okta.UsersClient(host, api_token)
-        #     self.groups_client = okta.UserGroupsClient(host, api_token)
-        # except OktaError as e:
-        #     raise AssertionException("Error connecting to Okta: %s" % e)
-        #
-        # logger.info('Connected')
-
-    def load_users_and_groups(self, groups, extended_attributes, all_users):
+# Makes call to mockroster API, parses response, needs to call convert user to fill user object with necessary values that are missing form API call, that are found from the user_sync.yml file
+    def load_users_and_groups(self, extended_attributes):
         """
-        :type groups: list(str)
-        :type extended_attributes: list(str)
-        :type all_users: bool
+        :type result_set: dict(str) parsed json response from api call
+        :type extended_attributes: dict(str)
         :rtype (bool, iterable(dict))
         """
-        # if all_users:
-        #     raise AssertionException("Okta connector has no notion of all users, please specify a --users group")
-        #
-        # options = self.options
-        # all_users_filter = options['all_users_filter']
-        #
-        # self.logger.info('Loading users...')
-        # self.user_by_uid = user_by_uid = {}
-        #
-        # for group in groups:
-        #     total_group_members = 0
-        #     total_group_users = 0
-        #     for user in self.iter_group_members(group, all_users_filter, extended_attributes):
-        #         total_group_members += 1
-        #
-        #         uid = user.get('uid')
-        #         if user and uid:
-        #             if uid not in user_by_uid:
-        #                 user_by_uid[uid] = user
-        #             total_group_users += 1
-        #             user_groups = user_by_uid[uid]['groups']
-        #             if group not in user_groups:
-        #                 user_groups.append(group)
-        #
-        #     self.logger.debug('Group %s members: %d users: %d', group, total_group_members, total_group_users)
-        #
-        # return six.itervalues(user_by_uid)
 
-        # users = {
-        #     'CN=Jake Sisko,OU=People,DC=perficientads,DC=com': {
-        #         'identity_type': 'federatedID',
-        #         'username': 'jsisko3@perficientads.com',
-        #         'domain': 'perficientads.com',
-        #         'firstname': 'Jake',
-        #         'lastname': 'Sisko',
-        #         'email': 'jsisko3@perficientads.com',
-        #         'groups': [
-        #             'Perficient ADS Adobe'
-        #         ],
-        #         'country': 'US',
-        #         'source_attributes': {
-        #             'email': 'jsisko3@perficientads.com',
-        #             'identity_type': None,
-        #             'username': None,
-        #             'domain': None,
-        #             'givenName': 'Jake',
-        #             'sn': 'Sisko',
-        #             'c': 'US'
-        #         }
-        #     }
-        # }
+        extended_attributes = [] #hardcoded for now
 
-        users = conn.make_call(OneRosterConnector.group_filter)
+        auth = Authenticator(self.username, self.password, self.api_token)
+        api_token = auth.retrieve_api_token()
+
+        conn = Connection(self.host, api_token=api_token)
+
+        sourced_id = conn.get_sourced_id(self.group_filter, self.group_name)
+
+        response = conn.make_call(self.group_filter, self.user_filter, sourced_id)
+
+        rp = ResultParser()
+        users_result = rp.parse_results(response, extended_attributes or [])
+
+        users = self.convert_user(users_result, extended_attributes or [])
 
         return six.itervalues(users)
 
-    def find_group(self, group):
-        """
-        :type group: str
-        :rtype UserGroup
-        """
-        group = group.strip()
-        options = self.options
-        group_filter_format = options['group_filter_format']
-        try:
-            results = self.groups_client.get_groups(query=group_filter_format.format(group=group))
-        except KeyError as e:
-            raise AssertionException("Bad format key in group query (%s): %s" % (group_filter_format, e))
-        except OktaError as e:
-            self.logger.warning("Unable to query group")
-            raise AssertionException("Okta error querying for group: %s" % e)
 
-        if results is None:
-            self.logger.warning("No group found for: %s", group)
-        else:
-            for result in results:
-                if result.profile.name == group:
-                    return result
+# Values missing from API call that are needed: identity_type, username??, domain, country
+# I'm thinking that we can pass the user records from parse_results to this function, which will use values from oneroster.YML&Usersync.YML along with the user record to construct the final user object
+    def convert_user(self, user_record, extended_attributes):
+        user_record['login'] = login = ONEROSTERValueFormatter.get_profile_value(record,'login')
 
-        return None
-
-#   Added
-    def find_group_name(self, group_name):
-        """
-        :type group_name: str
-        :rtype UserGroup
-        """
-        group_name = group_name.strip()
-        options = self.options
-        group_name_format = options['group_name_format']
-        try:
-            results = self.groups_client.get_groups(query=group_filter_format.format(group=group))
-        except KeyError as e:
-            raise AssertionException("Bad format key in group query (%s): %s" % (group_filter_format, e))
-        except OktaError as e:
-            self.logger.warning("Unable to query group")
-            raise AssertionException("Okta error querying for group: %s" % e)
-
-        if results is None:
-            self.logger.warning("No group name for: %s", group_name)
-        else:
-            for result in results:
-                if result.profile.name == group_name:
-                    return result
-
-        return None
-
-    def iter_group_members(self, group, filter_string, extended_attributes):
-        """
-        :type group: str
-        :type filter_string: str
-        :type extended_attributes: list
-        :rtype iterator(str, str)
-        """
-
-        user_attribute_names = []
-        user_attribute_names.extend(self.user_given_name_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_surname_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_country_code_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_identity_type_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_email_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_username_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_domain_formatter.get_attribute_names())
-        extended_attributes = list(set(extended_attributes) - set(user_attribute_names))
-        user_attribute_names.extend(extended_attributes)
-
-        res_group = self.find_group(group)
-        if res_group:
-            try:
-                attr_dict = OKTAValueFormatter.get_extended_attribute_dict(user_attribute_names)
-                members = self.groups_client.get_group_all_users(res_group.id, attr_dict)
-            except OktaError as e:
-                self.logger.warning("Unable to get_group_users")
-                raise AssertionException("Okta error querying for group users: %s" % e)
-            # Filtering users based all_users_filter query in config
-            for member in self.filter_users(members, filter_string):
-                user = self.convert_user(member, extended_attributes)
-                if not user:
-                    continue
-                yield (user)
-        else:
-            self.logger.warning("No group found for: %s", group)
-
-    def convert_user(self, record, extended_attributes):
-
-        source_attributes = {}
-        source_attributes['login'] = login = ONEROSTERValueFormatter.get_profile_value(record,'login')
-        email, last_attribute_name = self.user_email_formatter.generate_value(record)
-        email = email.strip() if email else None
-        if not email:
-            if last_attribute_name is not None:
-                self.logger.warning('Skipping user with login %s: empty email attribute (%s)', login, last_attribute_name)
-            return None
         user = user_sync.connector.helper.create_blank_user()
-        source_attributes['id'] = user['uid'] = record.id
-        source_attributes['email'] = email
-        user['email'] = email
 
-        source_attributes['identity_type'] = user_identity_type = self.user_identity_type
+        user_record['identity_type'] = user_identity_type = self.user_identity_type
         if not user_identity_type:
             user['identity_type'] = self.user_identity_type
         else:
@@ -328,9 +170,9 @@ class OneRosterConnector(object):
 
 
 
-        username, last_attribute_name = self.user_username_formatter.generate_value(record)
+        username, last_attribute_name = self.user_username_formatter.generate_value(user_record)
         username = username.strip() if username else None
-        source_attributes['username'] = username
+        user_record['username'] = username
         if username:
             user['username'] = username
         else:
@@ -339,9 +181,9 @@ class OneRosterConnector(object):
                                     last_attribute_name, login, email)
             user['username'] = email
 
-        domain, last_attribute_name = self.user_domain_formatter.generate_value(record)
+        domain, last_attribute_name = self.user_domain_formatter.generate_value(user_record)
         domain = domain.strip() if domain else None
-        source_attributes['domain'] = domain
+        user_record['domain'] = domain
         if domain:
             user['domain'] = domain
         elif username != email:
@@ -349,20 +191,9 @@ class OneRosterConnector(object):
         elif last_attribute_name:
             self.logger.warning('No domain attribute (%s) for user with login: %s', last_attribute_name, login)
 
-        first_name_value, last_attribute_name = self.user_given_name_formatter.generate_value(record)
-        source_attributes['firstName'] = first_name_value
-        if first_name_value is not None:
-            user['firstname'] = first_name_value
-        elif last_attribute_name:
-            self.logger.warning('No given name attribute (%s) for user with login: %s', last_attribute_name, login)
-        last_name_value, last_attribute_name = self.user_surname_formatter.generate_value(record)
-        source_attributes['lastName'] = last_name_value
-        if last_name_value is not None:
-            user['lastname'] = last_name_value
-        elif last_attribute_name:
-            self.logger.warning('No last name attribute (%s) for user with login: %s', last_attribute_name, login)
-        country_value, last_attribute_name = self.user_country_code_formatter.generate_value(record)
-        source_attributes['c'] = country_value
+
+        country_value, last_attribute_name = self.user_country_code_formatter.generate_value(user_record)
+        user_record['c'] = country_value
         if country_value is not None:
             user['country'] = country_value.upper()
         elif last_attribute_name:
@@ -370,38 +201,11 @@ class OneRosterConnector(object):
 
         if extended_attributes is not None:
             for extended_attribute in extended_attributes:
-                extended_attribute_value = OKTAValueFormatter.get_profile_value(record, extended_attribute)
-                source_attributes[extended_attribute] = extended_attribute_value
+                extended_attribute_value = ONEROSTERValueFormatter.get_profile_value(record, extended_attribute)
+                user_record[extended_attribute] = extended_attribute_value
 
-        user['source_attributes'] = source_attributes.copy()
+        user['source_attributes'] = user_record.copy()
         return user
-
-    def iter_search_result(self, filter_string, attributes):
-        """
-        type: filter_string: str
-        type: attributes: list(str)
-        """
-
-        attr_dict = ONEROSTERValueFormatter.get_extended_attribute_dict(attributes)
-
-        try:
-            self.logger.info("Calling okta SDK get_users with the following %s", filter_string)
-            if attr_dict:
-                users = self.users_client.get_all_users(query=filter_string, extended_attribute=attr_dict)
-            else:
-                users = self.users_client.get_all_users(query=filter_string)
-        except OktaError as e:
-            self.logger.warning("Unable to query users")
-            raise AssertionException("Okta error querying for users: %s" % e)
-        return users
-
-    def filter_users(self, users, filter_string):
-        try:
-            return list(filter(lambda user: eval(filter_string), users))
-        except SyntaxError as e:
-            raise AssertionException("Invalid syntax in predicate (%s): cannot evaluate" % filter_string)
-        except Exception as e:
-            raise AssertionException("Error filtering with predicate (%s): %s" % (filter_string, e))
 
 
 class ONEROSTERValueFormatter(object):
@@ -470,3 +274,176 @@ class ONEROSTERValueFormatter(object):
                 except UnicodeError as e:
                     raise AssertionException("Encoding error in value of attribute '%s': %s" % (attribute_name, e))
         return None
+
+
+# Custom Classes and Functions created
+
+#  Used to retrieve api token from mockroster implementation
+class Authenticator:
+
+    def __init__(self, username=None, password=None, token_endpoint=None):
+        self._username = username
+        self._password = password
+        self._token_endpoint = token_endpoint
+
+    @property
+    def username(self):
+        return self._username
+
+    @property
+    def password(self):
+        return self._password
+
+    @property
+    def token_endpoint(self):
+        return self._token_endpoint
+
+    @username.setter
+    def username(self, username):
+        self._username = username
+
+    @password.setter
+    def password(self, password):
+        self._password = password
+
+    @token_endpoint.setter
+    def token_endpoint(self, token_endpoint):
+        self._token_endpoint = token_endpoint
+
+    @username.getter
+    def username(self):
+        return self._username
+
+    @password.getter
+    def password(self):
+        return self._password
+
+    @token_endpoint.getter
+    def token_endpoint(self):
+        return self._token_endpoint
+
+    def retrieve_api_token(self):
+        payload = dict()
+        header = dict()
+        payload['grant_type'] = 'client_credentials'
+
+        x = requests.post(Authenticator.__getattribute__(self, 'token_endpoint'),
+                          auth=(Authenticator.__getattribute__(self, 'username'),
+                                Authenticator.__getattribute__(self, 'password')),
+                          headers=header, data=payload)
+
+        parsed_json = json.loads(x.content)
+
+        if x.ok is not True:
+            status = parsed_json['status']
+            message = parsed_json['message']
+            raise ValueError('Token Not Received with the following info:'
+                             + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
+
+        token = parsed_json['access_token']
+
+        return token
+
+# Starts connection with mockroster API and makes queries
+# ???Idea, to call these classes and functions from within the existing naming conventions used by the UST????
+
+class Connection:
+
+    def __init__(self, host_name=None, api_token=None):
+        self._api_token = api_token
+        self._host_name = host_name
+
+    @property
+    def api_token(self):
+        return self._api_token
+
+    @property
+    def host_name(self):
+        return self._host_name
+
+    @api_token.setter
+    def api_token(self, api_token):
+        self._api_token = api_token
+
+    @host_name.setter
+    def host_name(self, host_name):
+        self._host_name = host_name
+
+    @api_token.getter
+    def api_token(self):
+        return self._api_token
+
+    @host_name.getter
+    def host_name(self):
+        return self._host_name
+
+    def get_sourced_id(self, group_filter, group_name):
+        header = dict()
+        payload = dict()
+        header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
+
+        endpoint_sourced_id = Connection.__getattribute__(self, 'host_name') + group_filter
+        response = requests.get(endpoint_sourced_id, headers=header)
+        parsed_json = json.loads(response.content)
+
+        sourced_id = str(parsed_json[00]['sourcedId'])
+        return sourced_id
+
+    def make_call(self, group_filter, user_filter, sourced_id):
+        header = dict()
+        payload = dict()
+        header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
+
+        # checks to see if the query is either an allUsers/allStudents/allTeachers call
+        if group_filter is None:
+            api_endpoint_call = Connection.__getattribute__(self, 'host_name') + user_filter
+
+        else:
+            api_endpoint_call = Connection.__getattribute__(self, 'host_name') + \
+                            group_filter + '/' + sourced_id + '/' + user_filter
+
+        response = requests.get(api_endpoint_call, headers=header)
+        parsed_json = json.loads(response.content)
+        return parsed_json
+
+# Parses response from api call
+
+class ResultParser:
+
+    def __init__(self):
+
+    def parse_results(self, result_set, extended_attributes):
+        user_by_id = dict()
+        for user in result_set:
+            if user['status'] == 'active':
+                returned_user = self.create_user_object(user, extended_attributes)
+                user_by_id[user['sourcedId']] = returned_user
+        return user_by_id
+
+    def create_user_object(self, user, extended_attributes):
+        formatted_user = dict()
+        source_attributes = dict()
+        groups = list()
+        member_groups = list()
+
+        formatted_user['firstname'] = user['givenName']
+        formatted_user['lastname'] = user['familyName']
+        formatted_user['email'] = user['email']
+        formatted_user['groups'] = groups
+        formatted_user['member_groups'] = member_groups
+
+
+
+        source_attributes['email'] = user['email']
+        source_attributes['givenName'] = user['givenName']
+        source_attributes['familyName'] = user['familyName']
+
+        if extended_attributes is not None:
+            for attribute in extended_attributes:
+                source_attributes[attribute] = user[attribute]
+
+        formatted_user['source_attributes'] = source_attributes
+
+        return formatted_user
+
+
