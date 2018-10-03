@@ -146,24 +146,25 @@ class OneRosterConnector(object):
             inner_dict = groups_from_yml[group_filter]
             for group_name in inner_dict:
                 user_filter = inner_dict[group_name]
-                if group_filter is 'courses':
+                if group_filter == 'courses':
                     classes = conn.get_classes_for_course(group_name)
                     for each_class in classes:
                         sourced_id = conn.get_sourced_id('classes', each_class)
-                        users_list = conn.get_user_list(group_filter, user_filter, sourced_id)
+                        users_list = conn.get_user_list('classes', user_filter, sourced_id)
                         rp = ResultParser()
                         users_result = rp.parse_results(users_list, [])
+                        users_object = users_result.copy()
 
                 else:
                     sourced_id = conn.get_sourced_id(group_filter, group_name)
                     users_list = conn.get_user_list(group_filter, user_filter, sourced_id)
                     rp = ResultParser()
                     users_result = rp.parse_results(users_list, [])
+                    users_object = users_result.copy()
 
 
 
-
-        return six.itervalues(users_result)
+        return six.itervalues(users_object)
 
 # NEEDS WORK
 # Values missing from API call that are needed: identity_type, username??, domain, country
@@ -419,7 +420,10 @@ class Connection:
         endpoint_sourced_id = Connection.__getattribute__(self, 'host_name') + group_filter
         response = requests.get(endpoint_sourced_id, headers=header)
         parsed_json = json.loads(response.content)
-        esless = group_filter[:-2] + "Code"
+        if group_filter == 'courses':
+            esless = group_filter[:-1] + "Code"
+        elif group_filter == 'classes':
+            esless = group_filter[:-2] + "Code"
 
         for x in parsed_json:
             if x[esless] == group_name:
@@ -441,13 +445,14 @@ class Connection:
         parsed_json = json.loads(response.content)
 
         for x in parsed_json:
-            sourced_id = str(parsed_json['sourcedId'])
-            final_endpoint = Connection.__getattribute__(self, 'host_name') + 'courses' + '/' + sourced_id + '/classes'
-            response = requests.get(final_endpoint, headers=header)
-            parsed_json = json.loads(response.content)
-            for xx in parsed_json:
-                sourced_id = str(parsed_json['sourcedID'])
-                sourced_id_of_classes_within_course[group_name] = sourced_id
+            if x['courseCode'] == group_name:
+                sourced_id = x['sourcedId']
+                final_endpoint = Connection.__getattribute__(self,
+                                                             'host_name') + 'courses' + '/' + sourced_id + '/classes'
+                a_response = requests.get(final_endpoint, headers=header)
+                a_parsed_json = json.loads(a_response.content)
+                for xx in a_parsed_json:
+                    sourced_id_of_classes_within_course[xx['classCode']] = xx['sourcedId']
 
         return sourced_id_of_classes_within_course
 
