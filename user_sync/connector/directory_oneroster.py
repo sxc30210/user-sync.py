@@ -24,6 +24,7 @@ import six
 import string
 
 
+
 import user_sync.config
 import user_sync.connector.helper
 import user_sync.helper
@@ -46,14 +47,15 @@ def connector_initialize(options):
     return state
 
 
-def connector_load_users_and_groups(state, extended_attributes=None):
+def connector_load_users_and_groups(state, groups=None, extended_attributes=None, all_users=True):
     """
-    :type state: OneRosterConnector
-    :type extended_attributes: list(str)
+    :type state: LDAPDirectoryConnector
+    :type groups: Optional(list(str))
+    :type extended_attributes: Optional(list(str))
+    :type all_users: bool
     :rtype (bool, iterable(dict))
     """
-
-    return state.load_users_and_groups(extended_attributes or [])
+    return state.load_users_and_groups(groups or [], extended_attributes or [], all_users)
 
 
 class OneRosterConnector(object):
@@ -123,35 +125,47 @@ class OneRosterConnector(object):
         caller_config.report_unused_values(logger)
 
 # Makes call to mockroster API, parses response, needs to call convert user to fill user object with necessary values that are missing form API call, that are found from the user_sync.yml file
-    def load_users_and_groups(self, extended_attributes):
+    def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
-        :type result_set: dict(str) parsed json response from api call
-        :type extended_attributes: dict(str)
+        :type groups: list(str)
+        :type extended_attributes: list(str)
+        :type all_users: bool
         :rtype (bool, iterable(dict))
         """
 
         extended_attributes = [] #hardcoded for now
-        user_object = dict()
 
         auth = Authenticator(self.username, self.password, self.api_token)
         api_token = auth.retrieve_api_token()
 
         conn = Connection(self.host, api_token=api_token)
 
-        if self.group_name is not None:
-            sourced_id = conn.get_sourced_id(self.group_filter, self.group_name)
+        groups_from_yml = self.parse_yml_groups(groups)
 
-        response = conn.make_call(self.group_filter, self.user_filter, sourced_id or "")
+        for group_filter in groups_from_yml:
+            inner_dict = groups_from_yml[group_filter]
+            for group_name in inner_dict:
+                user_filter = inner_dict[group_name]
+                if group_filter is 'courses':
+                    classes = conn.get_classes_for_course(group_name)
+                    for each_class in classes:
+                        sourced_id = conn.get_sourced_id('classes', each_class)
+                        users_list = conn.get_user_list(group_filter, user_filter, sourced_id)
+                        rp = ResultParser()
+                        users_result = rp.parse_results(users_list, [])
 
-        rp = ResultParser()
-        users_result = rp.parse_results(response, extended_attributes or [])
-        for user in users_result:
-            updated_user = self.convert_user(user, extended_attributes or [])
-            user_object[user['sourcedId']] = updated_user
-            
-        return six.itervalues(user_object)
+                else:
+                    sourced_id = conn.get_sourced_id(group_filter, group_name)
+                    users_list = conn.get_user_list(group_filter, user_filter, sourced_id)
+                    rp = ResultParser()
+                    users_result = rp.parse_results(users_list, [])
 
 
+
+
+        return six.itervalues(users_result)
+
+# NEEDS WORK
 # Values missing from API call that are needed: identity_type, username??, domain, country
 # I'm thinking that we can pass the user records from parse_results to this function, which will use values from oneroster.YML&Usersync.YML along with the user record to construct the final user object
     def convert_user(self, user_record, extended_attributes):
@@ -208,6 +222,24 @@ class OneRosterConnector(object):
         user['source_attributes'] = user_record.copy()
         return user
 
+    def parse_yml_groups(self, groups_list):
+        """
+        description: parses group options from user-sync.config file into a dict with group_filter as a key and corresponding entries as a list of values
+        :type groups_list: set(str)
+        :rtype: iterable(dict)
+        """
+        keys = set()
+        full_dict = dict()
+
+        for text in groups_list:
+            group_filter, group_name, user_filter = text.split("::")
+            keys.add(group_filter)
+            if group_filter in full_dict:
+                full_dict[group_filter][group_name] = user_filter
+            else:
+                full_dict[group_filter] = {group_name: user_filter}
+
+        return full_dict
 
 class ONEROSTERValueFormatter(object):
     encoding = 'utf8'
@@ -381,16 +413,47 @@ class Connection:
     def get_sourced_id(self, group_filter, group_name):
         header = dict()
         payload = dict()
+        why = list()
         header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
 
         endpoint_sourced_id = Connection.__getattribute__(self, 'host_name') + group_filter
         response = requests.get(endpoint_sourced_id, headers=header)
         parsed_json = json.loads(response.content)
+        esless = group_filter[:-2] + "Code"
 
-        sourced_id = str(parsed_json[00]['sourcedId'])
-        return sourced_id
+        for x in parsed_json:
+            if x[esless] == group_name:
+                sourced_id = x['sourcedId']
+                why.append(sourced_id)
+                break
 
-    def make_call(self, group_filter, user_filter, sourced_id):
+        return_value = why[0]
+        return return_value
+
+    def get_classes_for_course(self, group_name):
+        header = dict()
+        payload = dict()
+        sourced_id_of_classes_within_course = dict()
+        header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
+
+        endpoint_sourced_id = Connection.__getattribute__(self, 'host_name') + 'courses'
+        response = requests.get(endpoint_sourced_id, headers=header)
+        parsed_json = json.loads(response.content)
+
+        for x in parsed_json:
+            sourced_id = str(parsed_json['sourcedId'])
+            final_endpoint = Connection.__getattribute__(self, 'host_name') + 'courses' + '/' + sourced_id + '/classes'
+            response = requests.get(final_endpoint, headers=header)
+            parsed_json = json.loads(response.content)
+            for xx in parsed_json:
+                sourced_id = str(parsed_json['sourcedID'])
+                sourced_id_of_classes_within_course[group_name] = sourced_id
+
+        return sourced_id_of_classes_within_course
+
+
+
+    def get_user_list(self, group_filter, user_filter, sourced_id):
         header = dict()
         payload = dict()
         header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
@@ -412,6 +475,7 @@ class Connection:
 class ResultParser:
 
     def __init__(self):
+        pass
 
     def parse_results(self, result_set, extended_attributes):
         user_by_id = dict()
@@ -427,17 +491,22 @@ class ResultParser:
         groups = list()
         member_groups = list()
 
-        formatted_user['firstname'] = user['givenName']
-        formatted_user['lastname'] = user['familyName']
-        formatted_user['email'] = user['email']
+        user_email = user['email']
+        user_given_name = user['givenName']
+        user_family_name = user['familyName']
+        user_username = user['username']
+
+        source_attributes['email'] = user_email
+        source_attributes['givenName'] = user_given_name
+        source_attributes['sn'] = user_family_name
+        source_attributes['username'] = user_username
+
+        formatted_user['firstname'] = user_given_name
+        formatted_user['lastname'] = user_family_name
+        formatted_user['email'] = user_email
         formatted_user['groups'] = groups
-        formatted_user['member_groups'] = member_groups
-
-
-
-        source_attributes['email'] = user['email']
-        source_attributes['givenName'] = user['givenName']
-        source_attributes['familyName'] = user['familyName']
+        formatted_user['memberGroups'] = member_groups
+        formatted_user['source_attributes'] = source_attributes
 
 
         if extended_attributes is not None:
