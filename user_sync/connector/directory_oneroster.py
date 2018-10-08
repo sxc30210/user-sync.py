@@ -173,8 +173,7 @@ class OneRosterConnector(object):
 
         user_record['identity_type'] = self.user_identity_type
         user_record['country'] = "US"  #will come from one-roster.yml
-        domain = user_record['email']
-        user_record['domain'] = domain # Needs work
+
 
 
     def parse_yml_groups(self, groups_list):
@@ -399,18 +398,17 @@ class Connection:
         response = requests.get(endpoint_sourced_id, headers=header)
         parsed_json = json.loads(response.content)
 
-        for x in parsed_json:
-            if x['courseCode'] == group_name:
-                sourced_id = x['sourcedId']
+        for m in parsed_json:
+            if m['courseCode'] == group_name:
+                sourced_id = m['sourcedId']
                 final_endpoint = Connection.__getattribute__(self,
                                                              'host_name') + 'courses' + '/' + sourced_id + '/classes'
-                a_response = requests.get(final_endpoint, headers=header)
-                a_parsed_json = json.loads(a_response.content)
-                for xx in a_parsed_json:
-                    sourced_id_of_classes_within_course[xx['classCode']] = xx['sourcedId']
+                i_response = requests.get(final_endpoint, headers=header)
+                k_parsed_json = json.loads(i_response.content)
+                for e in k_parsed_json:
+                    sourced_id_of_classes_within_course[e['classCode']] = e['sourcedId']
 
         return sourced_id_of_classes_within_course
-
 
 
     def get_user_list(self, group_filter, user_filter, sourced_id):
@@ -466,6 +464,7 @@ class ResultParser:
         source_attributes['identity_type'] = None
         source_attributes['c'] = None ## Not Finished
 
+        formatted_user['domain'] = user_domain
         formatted_user['firstname'] = user_given_name
         formatted_user['lastname'] = user_family_name
         formatted_user['email'] = user_email
