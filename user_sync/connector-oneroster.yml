@@ -12,7 +12,7 @@
 # You must specify both of these settings.  The token should be protected.
 # For more information on getting an Okta API Token, see:
 # http://developer.okta.com/docs/api/getting_started/getting_a_token.html
-
+#host name, eg: https://mockroster.io
 host: "https://mockroster.io/"
 #Endpoints to retrieve your api token
 #oAuth2 endpoint
@@ -22,18 +22,18 @@ api_token_endpoint: "https://mockroster.io/oauth/token"
 username: 'oruser'
 password: 'secret'
 
-# (required) group_filter_format (default given below)
-# specifies the string format used to construct a group query.
-# {group} is replaced with the name of the group to find.
-group_filter_format: "classes/"
-
-# (required) all_users_filter (default given below)
-#type of users that will be targets option include(users | students | teachers)
-all_users_filter: '/students'
-
-
-#Specific Groups that will be mapped from One Roster to Admin Console
-group_name: 'Algebra I - Fall'
+## (required) group_filter_format (default given below)
+## specifies the string format used to construct a group query.
+## {group} is replaced with the name of the group to find.
+#group_filter_format: "classes/"
+#
+## (required) all_users_filter (default given below)
+##type of users that will be targets option include(users | students | teachers)
+#all_users_filter: '/students'
+#
+#
+##Specific Groups that will be mapped from One Roster to Admin Console
+#group_name: 'Algebra I - Fall'
 
 # (optional) default_identity_type (no default)
 # specifies the identity type of the dashboard user to create.
@@ -70,7 +70,7 @@ group_name: 'Algebra I - Fall'
 # The default value is from "email" field in Okta user profile.
 # NOTE: for this and every format setting, the constant strings must be in
 # the encoding specified by the string_encoding setting, above.
-user_email_format: "{email}"
+#user_email_format: "{email}"
 
 # (optional) user_domain_format (no default value)
 # user_domain_format is analogous to user_email_format in syntax, but it

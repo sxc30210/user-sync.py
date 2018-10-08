@@ -171,12 +171,19 @@ directory_users:
     # the "Copy Editors" user group has been assigned access to appropriate
     # Adobe products, such as InDesign and InCopy.)
     # [You will need to edit or remove these examples.]
-    - directory_group: "Perficient ADS Adobe"
+
+    - directory_group: "classes::Algebra I - Fall::students"
       adobe_groups:
-        - "Perficient ADS Group"
-    - directory_group: "DS9"
-      adobe_groups:
-        - "Starship Adobe"
+        - "Mock Roster Test"
+
+
+
+#    - directory_group: "Perficient ADS Adobe"
+#      adobe_groups:
+#        - "Perficient ADS Group"
+#    - directory_group: "DS9"
+#      adobe_groups:
+#        - "Starship Adobe"
 
 #    - directory_gorup: "classes :: Algebra I - Fall :: students"
 #      adobe_groups:

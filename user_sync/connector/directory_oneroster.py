@@ -68,10 +68,10 @@ class OneRosterConnector(object):
 
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
         builder = user_sync.config.OptionsBuilder(caller_config)
-        builder.set_string_value('group_filter_format',
-                                 '{group}')
-        builder.set_string_value('all_users_filter',
-                                 '{user|students|teachers}')
+        # builder.set_string_value('group_filter_format',
+        #                          '{group}')
+        # builder.set_string_value('all_users_filter',
+        #                          '{user|students|teachers}')
         builder.set_string_value('group_name', '{group_name}')
         builder.set_string_value('string_encoding', 'utf8')
         builder.set_string_value('user_identity_type_format', None)
@@ -105,9 +105,9 @@ class OneRosterConnector(object):
         self.host = ONEROSTERValueFormatter(host)
         self.api_token = ONEROSTERValueFormatter(api_token)
 
-        self.group_name = ONEROSTERValueFormatter(options['group_name'])
-        self.group_filter = ONEROSTERValueFormatter(options['group_filter'])
-        self.user_filter = ONEROSTERValueFormatter(options['user_filter'])
+        # self.group_name = ONEROSTERValueFormatter(options['group_name'])
+        # self.group_filter = ONEROSTERValueFormatter(options['group_filter'])
+        # self.user_filter = ONEROSTERValueFormatter(options['user_filter'])
 
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
         self.user_identity_type_formatter = ONEROSTERValueFormatter(options['user_identity_type_format'])
@@ -141,7 +141,7 @@ class OneRosterConnector(object):
         conn = Connection(self.host, api_token=api_token)
 
         groups_from_yml = self.parse_yml_groups(groups)
-
+        users_result = dict()
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
             for group_name in inner_dict:
@@ -152,89 +152,41 @@ class OneRosterConnector(object):
                         sourced_id = conn.get_sourced_id('classes', each_class)
                         users_list = conn.get_user_list('classes', user_filter, sourced_id)
                         rp = ResultParser()
-                        users_result = rp.parse_results(users_list, [])
-                        users_object = users_result.copy()
+                        users_result.update(rp.parse_results(users_list, []))
 
                 else:
                     sourced_id = conn.get_sourced_id(group_filter, group_name)
                     users_list = conn.get_user_list(group_filter, user_filter, sourced_id)
                     rp = ResultParser()
-                    users_result = rp.parse_results(users_list, [])
-                    users_object = users_result.copy()
+                    users_result.update(rp.parse_results(users_list, []))
 
+        for first_dict in users_result:
+            values = users_result[first_dict]
+            self.convert_user(values, [])
 
-
-        return six.itervalues(users_object)
+        return six.itervalues(users_result)
 
 # NEEDS WORK
 # Values missing from API call that are needed: identity_type, username??, domain, country
 # I'm thinking that we can pass the user records from parse_results to this function, which will use values from oneroster.YML&Usersync.YML along with the user record to construct the final user object
     def convert_user(self, user_record, extended_attributes):
-        user_record['login'] = login = ONEROSTERValueFormatter.get_profile_value(user_record,'login')
 
-        user = user_sync.connector.helper.create_blank_user()
-
-        user_record['identity_type'] = user_identity_type = self.user_identity_type
-        if not user_identity_type:
-            user['identity_type'] = self.user_identity_type
-        else:
-            try:
-                user['identity_type'] = user_sync.identity_type.parse_identity_type(user_identity_type)
-            except AssertionException as e:
-                self.logger.warning('Skipping user %s: %s', login, e)
-                return None
-
-
-
-        username, last_attribute_name = self.user_username_formatter.generate_value(user_record)
-        username = username.strip() if username else None
-        user_record['username'] = username
-        if username:
-            user['username'] = username
-        else:
-            if last_attribute_name:
-                self.logger.warning('No username attribute (%s) for user with login: %s, default to email (%s)',
-                                    last_attribute_name, login, email)
-            user['username'] = email
-
-        domain, last_attribute_name = self.user_domain_formatter.generate_value(user_record)
-        domain = domain.strip() if domain else None
-        user_record['domain'] = domain
-        if domain:
-            user['domain'] = domain
-        elif username != email:
-            user['domain'] = email[email.find('@') + 1:]
-        elif last_attribute_name:
-            self.logger.warning('No domain attribute (%s) for user with login: %s', last_attribute_name, login)
-
-
-        country_value, last_attribute_name = self.user_country_code_formatter.generate_value(user_record)
-        user_record['c'] = country_value
-        if country_value is not None:
-            user['country'] = country_value.upper()
-        elif last_attribute_name:
-            self.logger.warning('No country code attribute (%s) for user with login: %s', last_attribute_name, login)
-
-        if extended_attributes is not None:
-            for extended_attribute in extended_attributes:
-                extended_attribute_value = ONEROSTERValueFormatter.get_profile_value(record, extended_attribute)
-                user_record[extended_attribute] = extended_attribute_value
-
-        user['source_attributes'] = user_record.copy()
-        return user
+        user_record['identity_type'] = self.user_identity_type
+        user_record['country'] = "US"
+        return user_record
 
     def parse_yml_groups(self, groups_list):
         """
-        description: parses group options from user-sync.config file into a dict with group_filter as a key and corresponding entries as a list of values
+        description: parses group options from user-sync.config file into a nested dict with Key: group_filter for the outter dict, Value: being the nested
+        dict {Key: group_name, Value: user_filter}
         :type groups_list: set(str)
         :rtype: iterable(dict)
         """
-        keys = set()
+
         full_dict = dict()
 
         for text in groups_list:
             group_filter, group_name, user_filter = text.split("::")
-            keys.add(group_filter)
             if group_filter in full_dict:
                 full_dict[group_filter][group_name] = user_filter
             else:
@@ -424,7 +376,8 @@ class Connection:
             esless = group_filter[:-1] + "Code"
         elif group_filter == 'classes':
             esless = group_filter[:-2] + "Code"
-
+        else:
+            esless = 'schoolCode'
         for x in parsed_json:
             if x[esless] == group_name:
                 sourced_id = x['sourcedId']
@@ -500,11 +453,15 @@ class ResultParser:
         user_given_name = user['givenName']
         user_family_name = user['familyName']
         user_username = user['username']
+        x, user_domain = str(user_email).split('@')
 
         source_attributes['email'] = user_email
+        source_attributes['username'] = user_username
         source_attributes['givenName'] = user_given_name
         source_attributes['sn'] = user_family_name
-        source_attributes['username'] = user_username
+        source_attributes['domain'] = user_domain
+        source_attributes['identity_type'] = None
+        source_attributes['c'] = None ## Not Finished
 
         formatted_user['firstname'] = user_given_name
         formatted_user['lastname'] = user_family_name
@@ -512,6 +469,7 @@ class ResultParser:
         formatted_user['groups'] = groups
         formatted_user['memberGroups'] = member_groups
         formatted_user['source_attributes'] = source_attributes
+        formatted_user['username'] = user_email
 
 
         if extended_attributes is not None:
