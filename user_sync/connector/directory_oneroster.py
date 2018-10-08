@@ -85,10 +85,10 @@ class OneRosterConnector(object):
         builder.set_string_value('logger_name', self.name)
 
         #Values needed to query API, values from YML file
-        host = builder.require_string_value('host')
-        api_token = builder.require_string_value('api_token_endpoint')
-        password = builder.require_string_value('password')
-        username = builder.require_string_value('username')
+        self.host = builder.require_string_value('host')
+        self.api_token = builder.require_string_value('api_token_endpoint')
+        self.password = builder.require_string_value('password')
+        self.username = builder.require_string_value('username')
 
 
 
@@ -100,10 +100,10 @@ class OneRosterConnector(object):
 
         ONEROSTERValueFormatter.encoding = options['string_encoding']
         #added for oneroster yml file, values placed into usable objects
-        self.username = ONEROSTERValueFormatter(username)
-        self.password = ONEROSTERValueFormatter(password)
-        self.host = ONEROSTERValueFormatter(host)
-        self.api_token = ONEROSTERValueFormatter(api_token)
+        # self.username = ONEROSTERValueFormatter(username)
+        # self.password = ONEROSTERValueFormatter(password)
+        # self.host = ONEROSTERValueFormatter(host)
+        # self.api_token = ONEROSTERValueFormatter(api_token)
 
         # self.group_name = ONEROSTERValueFormatter(options['group_name'])
         # self.group_filter = ONEROSTERValueFormatter(options['group_filter'])
@@ -172,8 +172,10 @@ class OneRosterConnector(object):
     def convert_user(self, user_record, extended_attributes):
 
         user_record['identity_type'] = self.user_identity_type
-        user_record['country'] = "US"
-        return user_record
+        user_record['country'] = "US"  #will come from one-roster.yml
+        domain = user_record['email']
+        user_record['domain'] = domain # Needs work
+
 
     def parse_yml_groups(self, groups_list):
         """
@@ -447,7 +449,8 @@ class ResultParser:
         formatted_user = dict()
         source_attributes = dict()
         groups = list()
-        member_groups = list()
+        #member_groups = list()
+        groups.append('courses::Geo-103::students') #hardcoded, won't be added here
 
         user_email = user['email']
         user_given_name = user['givenName']
@@ -467,7 +470,7 @@ class ResultParser:
         formatted_user['lastname'] = user_family_name
         formatted_user['email'] = user_email
         formatted_user['groups'] = groups
-        formatted_user['memberGroups'] = member_groups
+        #formatted_user['memberGroups'] = member_groups
         formatted_user['source_attributes'] = source_attributes
         formatted_user['username'] = user_email
 

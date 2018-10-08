@@ -172,9 +172,9 @@ directory_users:
     # Adobe products, such as InDesign and InCopy.)
     # [You will need to edit or remove these examples.]
 
-    - directory_group: "classes::Algebra I - Fall::students"
+    - directory_group: "courses::Geo-103::students"
       adobe_groups:
-        - "Mock Roster Test"
+        - "Mock Roster Test --Mike"
 
 
 
