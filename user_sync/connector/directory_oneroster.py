@@ -280,10 +280,10 @@ class Connection:
         return_value = why[0]
         return return_value
 
-    def get_users_for_course_or_school(self, group_filter, group_name, user_filter):
+    def get_users_for_courses(self, group_filter, group_name, user_filter):
         header = dict()
         payload = dict()
-        users = dict()
+        user_list = list()
         header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
 
         sourced_id = self.get_sourced_id(group_filter, group_name)
@@ -296,15 +296,16 @@ class Connection:
             group_names = x['classCode']
             group_filter = 'classes'
             users = self.get_user_list(group_filter, group_names, user_filter, sourced_ids)
+            user_list.extend(users)
 
-        return users
+        return user_list
 
     def get_user_list(self, group_filter, group_name, user_filter, sourced_id):
         header = dict()
         payload = dict()
         header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
-        if group_filter in ['courses', 'school']:
-            parsed_json = self.get_users_for_course_or_school(group_filter, group_name, user_filter)
+        if group_filter == 'courses':
+            parsed_json = self.get_users_for_courses(group_filter, group_name, user_filter)
         elif sourced_id is not None:
             api_final_call = Connection.__getattribute__(self, 'host_name') + 'classes' + '/' + sourced_id + '/' + user_filter
             response_a = requests.get(api_final_call, headers=header)
