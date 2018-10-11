@@ -142,7 +142,7 @@ class OneRosterConnector(object):
         full_dict = dict()
 
         for text in groups_list:
-            group_filter, group_name, user_filter = text.split("::")
+            group_filter, group_name, user_filter = text.lower().split("::")
             if group_filter in full_dict:
                 full_dict[group_filter][group_name] = user_filter
                 full_dict[group_filter]['original_group'] = text
@@ -205,19 +205,15 @@ class Authenticator:
         header = dict()
         payload['grant_type'] = 'client_credentials'
 
-        x = requests.post(Authenticator.__getattribute__(self, 'token_endpoint'),
+        response = requests.post(Authenticator.__getattribute__(self, 'token_endpoint'),
                           auth=(Authenticator.__getattribute__(self, 'username'),
                                 Authenticator.__getattribute__(self, 'password')),
                           headers=header, data=payload)
 
-        parsed_json = json.loads(x.content)
-
-        if x.ok is not True:
-            status = parsed_json['status']
-            message = parsed_json['message']
+        if response.ok is not True:
             raise ValueError('Token Not Received with the following info:'
-                             + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
-
+                             + '  ' + 'status_code:' + str(response.status_code) + '\nmessage:' + response.text)
+        parsed_json = json.loads(response.content)
         token = parsed_json['access_token']
 
         return token
@@ -267,19 +263,20 @@ class Connection:
                 sourced_id = class_list[each_class]
                 api_call = Connection.__getattribute__(self, 'host_name') + 'classes' + '/' + sourced_id + '/' + user_filter
                 response = requests.get(api_call, headers=header)
+                if response.ok is False:
+                    raise ValueError('No ' + user_filter + ' Found for:' + " " + group_name + "\nError Response Message:" + " " +
+                                     response.text)
                 parsed_response = json.loads(response.content)
                 parsed_json_list.extend(parsed_response)
-                if response.ok is False:
-                    raise ValueError('No Users Found for:' + " " + group_name + " " + "Error Response Message:" + " " +
-                                     response.text)
+
         else:
             sourced_id = self.get_sourced_id(group_filter, group_name)
             api_endpoint_call = Connection.__getattribute__(self, 'host_name') + group_filter + '/' + sourced_id + '/' + user_filter
             response = requests.get(api_endpoint_call, headers=header)
-            parsed_json_list = json.loads(response.content)
             if response.ok is False:
-                raise ValueError('No Users Found for:' + " " + group_name + " " + "Error Response Message:" + " " +
+                raise ValueError('No ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
                                  response.text)
+            parsed_json_list = json.loads(response.content)
 
         return parsed_json_list
 
@@ -291,7 +288,6 @@ class Connection:
 
         endpoint_sourced_id = Connection.__getattribute__(self, 'host_name') + group_filter
         response = requests.get(endpoint_sourced_id, headers=header)
-
         if response.ok is not True:
             status = response.status_code
             message = response.reason
@@ -307,7 +303,7 @@ class Connection:
         else:
             esless = 'name'
         for x in parsed_json:
-            if x[esless] == group_name:
+            if x[esless].lower() == group_name:
                 sourced_id = x['sourcedId']
                 why.append(sourced_id)
                 break
@@ -327,6 +323,11 @@ class Connection:
         endpoint_sourced_id = Connection.__getattribute__(self,
                                                           'host_name') + 'courses' + '/' + sourced_id + '/' + 'classes'
         response = requests.get(endpoint_sourced_id, headers=header)
+        if response.ok is not True:
+            status = response.status_code
+            message = response.reason
+            raise ValueError('Non Successful Response'
+                             + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
         parsed_json = json.loads(response.content)
 
         for each_class in parsed_json:
@@ -344,12 +345,6 @@ class ResultParser:
     def parse_results(self, result_set, extended_attributes, original_group):
         users_dict = dict()
         for user in result_set:
-            if user == 'timestamp':
-                raise ValueError('No Users Found for a class in:' + original_group)
-            if user['status'] == 'NOT_FOUND':
-                raise ValueError('No Users Found for:' + " " + original_group + " " + "Error Response Message:" + " " +
-                                 result_set['errorMessageList'][0])
-
             if user['status'] == 'active':
                 returned_user = self.create_user_object(user, extended_attributes, original_group)
                 users_dict[user['sourcedId']] = returned_user
