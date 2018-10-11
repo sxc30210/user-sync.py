@@ -269,11 +269,18 @@ class Connection:
                 response = requests.get(api_call, headers=header)
                 parsed_response = json.loads(response.content)
                 parsed_json_list.extend(parsed_response)
+                if response.ok is False:
+                    raise ValueError('No Users Found for:' + " " + group_name + " " + "Error Response Message:" + " " +
+                                     response.text)
         else:
             sourced_id = self.get_sourced_id(group_filter, group_name)
             api_endpoint_call = Connection.__getattribute__(self, 'host_name') + group_filter + '/' + sourced_id + '/' + user_filter
             response = requests.get(api_endpoint_call, headers=header)
             parsed_json_list = json.loads(response.content)
+            if response.ok is False:
+                raise ValueError('No Users Found for:' + " " + group_name + " " + "Error Response Message:" + " " +
+                                 response.text)
+
         return parsed_json_list
 
     def get_sourced_id(self, group_filter, group_name):
@@ -305,7 +312,7 @@ class Connection:
                 why.append(sourced_id)
                 break
         if why.__len__() != 1:
-            raise ValueError('No Source Ids Found')
+            raise ValueError('No Source Ids Found for:' + " " + group_filter + ":" + " " + group_name)
 
         return_value = why[0]
         return return_value
@@ -335,14 +342,18 @@ class ResultParser:
         pass
 
     def parse_results(self, result_set, extended_attributes, original_group):
-        user_by_id = dict()
-        # if result_set.__len__() !> 0:
-        #     raise ValueError('No User Response Found, try running again')
+        users_dict = dict()
         for user in result_set:
+            if user == 'timestamp':
+                raise ValueError('No Users Found for a class in:' + original_group)
+            if user['status'] == 'NOT_FOUND':
+                raise ValueError('No Users Found for:' + " " + original_group + " " + "Error Response Message:" + " " +
+                                 result_set['errorMessageList'][0])
+
             if user['status'] == 'active':
                 returned_user = self.create_user_object(user, extended_attributes, original_group)
-                user_by_id[user['sourcedId']] = returned_user
-        return user_by_id
+                users_dict[user['sourcedId']] = returned_user
+        return users_dict
 
     def create_user_object(self, user, extended_attributes, original_group):
         formatted_user = dict()
