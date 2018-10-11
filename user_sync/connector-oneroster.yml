@@ -22,6 +22,8 @@ api_token_endpoint: "https://mockroster.io/oauth/token"
 username: 'oruser'
 password: 'secret'
 
+country_code: 'US'
+
 ## (required) group_filter_format (default given below)
 ## specifies the string format used to construct a group query.
 ## {group} is replaced with the name of the group to find.

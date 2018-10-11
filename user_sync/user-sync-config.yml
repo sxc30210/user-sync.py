@@ -172,9 +172,9 @@ directory_users:
     # Adobe products, such as InDesign and InCopy.)
     # [You will need to edit or remove these examples.]
 
-#    - directory_group: "classes::Art II - Spring::students"
-#      adobe_groups:
-#        - "Mock Roster Test --Mike"
+    - directory_group: "classes::Art II - Spring::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
 
     - directory_group: "courses::Phy-102::students"
       adobe_groups:
@@ -184,21 +184,21 @@ directory_users:
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
 
-#    - directory_group: "courses::Alg-102::students"
-#      adobe_groups:
-#        - "Mock Roster Test --Mike"
+    - directory_group: "courses::Alg-102::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
 
-#    - directory_group: "classes::Algebra II - Fall::students"
-#      adobe_groups:
-#        - "Mock Roster Test --Mike"
-#
-#    - directory_group: "schools::Spring Valley Elementary School::students"
-#      adobe_groups:
-#        - "Mock Roster Test --Mike"
-#
-#    - directory_group: "schools::Woodland Elementary School::students"
-#      adobe_groups:
-#        - "Mock Roster Test --Mike"
+    - directory_group: "classes::Algebra II - Fall::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
+    - directory_group: "schools::Spring Valley Elementary School::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
+    - directory_group: "schools::Woodland Elementary School::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
 
 
 #    - directory_group: "Perficient ADS Adobe"
