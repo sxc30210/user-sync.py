@@ -142,7 +142,14 @@ class OneRosterConnector(object):
         full_dict = dict()
 
         for text in groups_list:
-            group_filter, group_name, user_filter = text.lower().split("::")
+            try:
+                group_filter, group_name, user_filter = text.lower().split("::")
+            except ValueError:
+                raise ValueError("Incorrect MockRoster Group Syntax: " + text + " \nRequires values for group_filter, group_name, user_filter. With '::' separating each value")
+            if group_filter not in ['classes', 'courses', 'schools']:
+                raise ValueError("Incorrect group_filter: " + group_filter + " .... must be either: classes, courses, or schools")
+            if user_filter not in ['students', 'teachers', 'users']:
+                raise ValueError("Incorrect user_filter: " + user_filter + " .... must be either: students, teachers, or users")
             if group_filter in full_dict:
                 full_dict[group_filter][group_name] = user_filter
                 full_dict[group_filter]['original_group'] = text
@@ -289,10 +296,8 @@ class Connection:
         endpoint_sourced_id = Connection.__getattribute__(self, 'host_name') + group_filter
         response = requests.get(endpoint_sourced_id, headers=header)
         if response.ok is not True:
-            status = response.status_code
-            message = response.reason
             raise ValueError('Non Successful Response'
-                             + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
+                             + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
 
         parsed_json = json.loads(response.content)
 
