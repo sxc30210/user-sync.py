@@ -150,6 +150,7 @@ class OneRosterConnector(object):
                 raise ValueError("Incorrect group_filter: " + group_filter + " .... must be either: classes, courses, or schools")
             if user_filter not in ['students', 'teachers', 'users']:
                 raise ValueError("Incorrect user_filter: " + user_filter + " .... must be either: students, teachers, or users")
+            group_name = ''.join(group_name.split())
             if group_filter in full_dict:
                 full_dict[group_filter][group_name] = user_filter
                 full_dict[group_filter]['original_group'] = text
@@ -308,7 +309,7 @@ class Connection:
         else:
             esless = 'name'
         for x in parsed_json:
-            if x[esless].lower() == group_name:
+            if ''.join(x[esless].split()).lower() == group_name:
                 sourced_id = x['sourcedId']
                 why.append(sourced_id)
                 break
