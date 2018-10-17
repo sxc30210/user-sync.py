@@ -131,8 +131,8 @@ class OneRosterConnector(object):
 
         return six.itervalues(users_result)
 
-#       Adds Country Code and Identity Type from YML files
     def convert_user(self, user_record):
+        """ description: Adds country code and identity_type from yml files """
 
         user_record['identity_type'] = self.user_identity_type
         user_record['country'] = self.country_code
@@ -166,12 +166,9 @@ class OneRosterConnector(object):
 
         return full_dict
 
-# Custom Classes and Functions created
-
-#   Used to retrieve api token from mockroster implementation
-
 
 class Authenticator:
+    """ Retrieves api token from One-Roster implementation"""
 
     def __init__(self, username=None, password=None, token_endpoint=None):
         self._username = username
@@ -227,11 +224,8 @@ class Authenticator:
         if response.ok is not True:
             raise ValueError('Token Not Received with the following info:'
                              + '  ' + 'status_code:' + str(response.status_code) + '\nmessage:' + response.text)
-        parsed_json = json.loads(response.content)
-        token = parsed_json['access_token']
 
-        return token
-
+        return json.loads(response.content)['access_token']
 
 # Starts connection with mockroster API and makes queries
 
