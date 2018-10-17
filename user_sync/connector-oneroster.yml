@@ -24,6 +24,11 @@ password: 'secret'
 
 country_code: 'US'
 
+#(optional) Additional One Roster User information (source_attributes), that can be used to create final user object.
+# attributes will be used and manipulated within the extension-config.yml file
+
+
+
 ## (required) group_filter_format (default given below)
 ## specifies the string format used to construct a group query.
 ## {group} is replaced with the name of the group to find.

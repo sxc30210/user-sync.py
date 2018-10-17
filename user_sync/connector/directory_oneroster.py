@@ -24,7 +24,6 @@ import six
 import string
 
 
-
 import user_sync.config
 import user_sync.connector.helper
 import user_sync.helper
@@ -80,8 +79,15 @@ class OneRosterConnector(object):
 #       Country Code passed from YML file
         self.country_code = builder.require_string_value('country_code')
 
+        #Extended Attributes from YML file
+        #self.extended_attributes = builder.set_value(caller_config.value['extended_attributes'], list(), None)
+        # self.extended_attributes = caller_options['extended_attributes']
+
         # Assemble data from YAML into options object
         options = builder.get_options()
+
+        # #Extended Attributes from YML file
+        # self.extended_attributes = options.values()
 
         self.logger = logger = user_sync.connector.helper.create_logger(options)
 
@@ -108,6 +114,7 @@ class OneRosterConnector(object):
 
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = dict()
+        rp = ResultParser()
 
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
@@ -116,17 +123,16 @@ class OneRosterConnector(object):
             for group_name in inner_dict:
                 user_filter = inner_dict[group_name]
                 users_list = conn.get_user_list(group_filter, group_name, user_filter)
-                rp = ResultParser()
                 users_result.update(rp.parse_results(users_list, extended_attributes, original_group))
 
         for first_dict in users_result:
             values = users_result[first_dict]
-            self.convert_user(values, [])
+            self.convert_user(values)
 
         return six.itervalues(users_result)
 
-#       Adds Country Code and Identity Type values from YML files
-    def convert_user(self, user_record, extended_attributes):
+#       Adds Country Code and Identity Type from YML files
+    def convert_user(self, user_record):
 
         user_record['identity_type'] = self.user_identity_type
         user_record['country'] = self.country_code
@@ -135,7 +141,7 @@ class OneRosterConnector(object):
         """
         description: parses group options from user-sync.config file into a nested dict with Key: group_filter for the outter dict, Value: being the nested
         dict {Key: group_name, Value: user_filter}
-        :type groups_list: set(str)
+        :type groups_list: set(str) from user-sync-config.yml
         :rtype: iterable(dict)
         """
 
@@ -345,9 +351,6 @@ class Connection:
 # Parses response from api call
 class ResultParser:
 
-    def __init__(self):
-        pass
-
     def parse_results(self, result_set, extended_attributes, original_group):
         users_dict = dict()
         for user in result_set:
@@ -355,7 +358,6 @@ class ResultParser:
                 returned_user = self.create_user_object(user, extended_attributes, original_group)
                 users_dict[user['sourcedId']] = returned_user
         return users_dict
-
     def create_user_object(self, user, extended_attributes, original_group):
         formatted_user = dict()
         source_attributes = dict()
@@ -363,6 +365,7 @@ class ResultParser:
         #member_groups = list() #May not need
         groups.append(original_group)
 
+#       Probably can eliminate use of these variables?????
         user_email = user['email']
         user_given_name = user['givenName']
         user_family_name = user['familyName']
@@ -382,14 +385,12 @@ class ResultParser:
         userId = user['userId']
         userIds = user['userIds']
 
-#       User information available from Mock Roster
+#       User information available from One-Roster
         source_attributes['email'] = user_email
         source_attributes['username'] = user_username
         source_attributes['givenName'] = user_given_name
         source_attributes['familyName'] = user_family_name
         source_attributes['domain'] = user_domain
-        source_attributes['identity_type'] = None
-        source_attributes['country'] = None ## Not Finished, will be passed from yml
         source_attributes['enabledUser'] = enabledUser
         source_attributes['grades'] = grades
         source_attributes['identifier'] = identifier
@@ -414,9 +415,11 @@ class ResultParser:
         formatted_user['source_attributes'] = source_attributes
         formatted_user['username'] = user_email
 
+#       adds any extended_attribute values
+#       from the one-roster user information into the final user object utilized by the UST
         if extended_attributes is not None:
             for attribute in extended_attributes:
-                source_attributes[attribute] = user[attribute]
+                formatted_user[attribute] = user[attribute]
 
         formatted_user['source_attributes'] = source_attributes
 

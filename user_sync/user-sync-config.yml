@@ -172,33 +172,40 @@ directory_users:
     # Adobe products, such as InDesign and InCopy.)
     # [You will need to edit or remove these examples.]
 
-    - directory_group: "classes::Art II - Spring::students"
+    - directory_group: "classes::Art ii -Spring::students"
       adobe_groups:
         - "Mock Roster Test --Mike"
+#
+#    - directory_group: "courses::Phy-102::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
 
-    - directory_group: "courses::Phy-102::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
-
+#   Won't work since a class does not have teachers associated to it
 #    - directory_group: "courses::Phy-102::teachers"
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
+#
+#
+#    - directory_group: "classes::Physics II - Spring::teachers"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
+
 
     - directory_group: "courses::Alg-102::students"
       adobe_groups:
         - "Mock Roster Test --Mike"
-
-    - directory_group: "classes::Algebra II - Fall::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
-
-    - directory_group: "schools::Spring Valley Elementary School::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
-
-    - directory_group: "schools::Woodland Elementary School::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
+#
+#    - directory_group: "classes::Algebra II - Fall::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
+#
+#    - directory_group: "schools::Spring Valley Elementary School::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
+#
+#    - directory_group: "schools::Woodland Elementary School::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
 
 
 #    - directory_group: "Perficient ADS Adobe"
