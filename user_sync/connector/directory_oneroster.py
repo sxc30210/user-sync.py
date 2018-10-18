@@ -63,44 +63,31 @@ class OneRosterConnector(object):
     def __init__(self, caller_options):
 
 #       Get the configuration information and apply data from YAML
-
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
         builder = user_sync.config.OptionsBuilder(caller_config)
-
+        options = builder.get_options()
+        self.options = options
         builder.set_string_value('user_identity_type', None)
         builder.set_string_value('logger_name', self.name)
 
-#       Values needed to query API, values from YML file
+#       Values from connector-oneroster.yml, required for communication with One-Roster API
         self.host = builder.require_string_value('host')
         self.api_token = builder.require_string_value('api_token_endpoint')
         self.password = builder.require_string_value('password')
         self.username = builder.require_string_value('username')
 
-#       Country Code passed from YML file
+        # Country Code value, required from connector-oneroster.yml
         self.country_code = builder.require_string_value('country_code')
 
-        #Extended Attributes from YML file
-        #self.extended_attributes = builder.set_value(caller_config.value['extended_attributes'], list(), None)
-        # self.extended_attributes = caller_options['extended_attributes']
-
-        # Assemble data from YAML into options object
-        options = builder.get_options()
-
-        # #Extended Attributes from YML file
-        # self.extended_attributes = options.values()
+        # Identity Type of Users from User-Sync YML file
+        self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
 
         self.logger = logger = user_sync.connector.helper.create_logger(options)
-
-#       Identity Type of Users from User-Sync YML file
-        self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
-        self.options = options
         caller_config.report_unused_values(logger)
 
-#       Makes call to mockroster API, parses response,
-#       needs to call convert user to fill user object with necessary values that are missing form API call,
-#       that are found from the user_sync.yml file
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
+        description: Leverages class components to return and send a user list to UMAPI
         :type groups: list(str)
         :type extended_attributes: list(str)
         :type all_users: bool
@@ -132,7 +119,7 @@ class OneRosterConnector(object):
         return six.itervalues(users_result)
 
     def convert_user(self, user_record):
-        """ description: Adds country code and identity_type from yml files """
+        """ description: Adds country code and identity_type from yml files to User Record """
 
         user_record['identity_type'] = self.user_identity_type
         user_record['country'] = self.country_code
@@ -168,7 +155,13 @@ class OneRosterConnector(object):
 
 
 class Authenticator:
-    """ Retrieves api token from One-Roster implementation"""
+    """
+    description: Retrieves api token from One-Roster implementation, using user's credentials
+    :type username str()
+    :type password str()
+    :type token_endpoint str()
+    :rtype api_token str()
+    """
 
     def __init__(self, username=None, password=None, token_endpoint=None):
         self._username = username
@@ -227,10 +220,9 @@ class Authenticator:
 
         return json.loads(response.content)['access_token']
 
-# Starts connection with mockroster API and makes queries
-
 
 class Connection:
+    """ Starts connection and makes queries with One-Roster API"""
 
     def __init__(self, host_name=None, api_token=None):
         self._api_token = api_token
@@ -261,6 +253,13 @@ class Connection:
         return self._host_name
 
     def get_user_list(self, group_filter, group_name, user_filter):
+        """
+        description:
+        :type group_filter: str()
+        :type group_name: str()
+        :type user_filter: str()
+        :rtype parsed_json_list: list(str)
+        """
         header = dict()
         payload = dict()
         parsed_json_list = list()
@@ -289,6 +288,12 @@ class Connection:
         return parsed_json_list
 
     def get_sourced_id(self, group_filter, group_name):
+        """
+        description: Returns sourcedId for targeted group_name from One-Roster
+        :type group_filter: str()
+        :type group_name: str()
+        :rtype sourced_id: str()
+        """
         header = dict()
         payload = dict()
         why = list()
@@ -320,6 +325,12 @@ class Connection:
         return return_value
 
     def get_classlist_for_course(self, group_name):
+        """
+        description: returns list of sourceIds for classes of a course (group_name)
+        :type group_name: str()
+        :rtype class_list: list(str)
+        """
+
         header = dict()
         payload = dict()
         class_list = dict()
@@ -342,75 +353,64 @@ class Connection:
             class_list[class_name] = class_sourced_id
 
         return class_list
-# Parses response from api call
+
+
 class ResultParser:
 
     def parse_results(self, result_set, extended_attributes, original_group):
+        """
+        description: parses through user_list from API calls, to create final user objects
+        :type result_set: list(dict())
+        :type extended_attributes: list(str)
+        :type original_group: str()
+        :rtype users_dict: dict(constructed user objects)
+        """
         users_dict = dict()
         for user in result_set:
             if user['status'] == 'active':
                 returned_user = self.create_user_object(user, extended_attributes, original_group)
                 users_dict[user['sourcedId']] = returned_user
         return users_dict
+
     def create_user_object(self, user, extended_attributes, original_group):
+        """
+        description: Using user's API information to construct final user objects
+        :type user: dict()
+        :type extended_attributes: list(str)
+        :type original_group: str()
+        :rtype: formatted_user: dict(user object)
+        """
         formatted_user = dict()
         source_attributes = dict()
         groups = list()
-        #member_groups = list() #May not need
+        # member_groups = list() #May not need
         groups.append(original_group)
 
-#       Probably can eliminate use of these variables?????
-        user_email = user['email']
-        user_given_name = user['givenName']
-        user_family_name = user['familyName']
-        user_username = user['username']
-        x, user_domain = str(user_email).split('@')
-        enabledUser = user['enabledUser']
-        grades = user['grades']
-        identifier = user['identifier']
-        metadata = user['metadata']
-        middleName = user['middleName']
-        phone = user['phone']
-        role = user['role']
-        schoolId = user['schoolId']
-        sourcedId = user['sourcedId']
-        status = user['status']
-        type = user['type']
-        userId = user['userId']
-        userIds = user['userIds']
+        x, user_domain = str(user['email']).split('@')
 
-#       User information available from One-Roster
-        source_attributes['email'] = user_email
-        source_attributes['username'] = user_username
-        source_attributes['givenName'] = user_given_name
-        source_attributes['familyName'] = user_family_name
-        source_attributes['domain'] = user_domain
-        source_attributes['enabledUser'] = enabledUser
-        source_attributes['grades'] = grades
-        source_attributes['identifier'] = identifier
-        source_attributes['metadata'] = metadata
-        source_attributes['middleName'] = middleName
-        source_attributes['phone'] = phone
-        source_attributes['role'] = role
-        source_attributes['schoolId'] = schoolId
-        source_attributes['sourcedId'] = sourcedId
-        source_attributes['status'] = status
-        source_attributes['type'] = type
-        source_attributes['userId'] = userId
-        source_attributes['userIds'] = userIds
-
-#       User info that will be used to make UMAPI calls
-        formatted_user['domain'] = user_domain
-        formatted_user['firstname'] = user_given_name
-        formatted_user['lastname'] = user_family_name
-        formatted_user['email'] = user_email
+        #       User information available from One-Roster
+        source_attributes['email'] = formatted_user['email'] = user['email']
+        source_attributes['username'] = formatted_user['username'] = user['username']
+        source_attributes['givenName'] = formatted_user['firstname'] = user['givenName']
+        source_attributes['familyName'] = formatted_user['lastname'] = user['familyName']
+        source_attributes['domain'] = formatted_user['domain'] = user_domain
         formatted_user['groups'] = groups
-#       Formatted_user['memberGroups'] = None #May not need
-        formatted_user['source_attributes'] = source_attributes
-        formatted_user['username'] = user_email
+        source_attributes['enabledUser'] = user['enabledUser']
+        source_attributes['grades'] = user['grades']
+        source_attributes['identifier'] = user['identifier']
+        source_attributes['metadata'] = user['metadata']
+        source_attributes['middleName'] = user['middleName']
+        source_attributes['phone'] = user['phone']
+        source_attributes['role'] = user['role']
+        source_attributes['schoolId'] = user['schoolId']
+        source_attributes['sourcedId'] = user['sourcedId']
+        source_attributes['status'] = user['status']
+        source_attributes['type'] = user['type']
+        source_attributes['userId'] = user['userId']
+        source_attributes['userIds'] = user['userIds']
 
-#       adds any extended_attribute values
-#       from the one-roster user information into the final user object utilized by the UST
+        #       adds any extended_attribute values
+        #       from the one-roster user information into the final user object utilized by the UST
         if extended_attributes is not None:
             for attribute in extended_attributes:
                 formatted_user[attribute] = user[attribute]

@@ -52,9 +52,6 @@ class TestOneRosterConnector(TestCase):
         expected_dict_format = {'courses': {'alg-102': 'students', 'original_group': 'courses::Alg-102::students'}}
 
         assert expected_dict_format == return_dict_format
-
-    def test_exception_parse_yml_groups(self):
-
         self.assertRaises(ValueError, lambda: self.connector.parse_yml_groups({'course::Alg-102::students'}))
 
     @patch('user_sync.connector.directory_oneroster.Authenticator.retrieve_api_token')
@@ -148,24 +145,24 @@ class TestOneRosterConnector(TestCase):
 
 
 
-    @patch('user_sync.connector.directory_oneroster.ResultParser')
-    @patch('user_sync.connector.directory_oneroster.Connection')
-    @patch('user_sync.connector.directory_oneroster.Authenticator')
-    def test_load_users_and_groups(self, MockAuth, MockConn, MockParse):
-        auth = MockAuth()
-        conn = MockConn()
-        rp = MockParse
-        mock_adobe_user_group = {'courses::Alg-102::students', 'classes::Algebra I - Fall::teachers'}
-        #groups_from_yml = self.connector.parse_yml_groups(mock_adobe_user_group)
-
-        deliverable_user_list = self.connector.load_users_and_groups(mock_adobe_user_group, [], True)
-
-
-        assert six.itervalues(users_result) != None
-
-        # def test_load_users_and_groups(self):
-        #     mock_adobe_user_group = {'courses::Alg-102::students', 'classes::Algebra I - Fall::teachers'}
-        #
-        #     deliverable_user_list = self.connector.load_users_and_groups(mock_adobe_user_group, [], True)
-        #
-        #     print(deliverable_user_list)
+    # @patch('user_sync.connector.directory_oneroster.ResultParser')
+    # @patch('user_sync.connector.directory_oneroster.Connection')
+    # @patch('user_sync.connector.directory_oneroster.Authenticator')
+    # def test_load_users_and_groups(self, MockAuth, MockConn, MockParse):
+    #     auth = MockAuth()
+    #     conn = MockConn()
+    #     rp = MockParse
+    #     mock_adobe_user_group = {'courses::Alg-102::students', 'classes::Algebra I - Fall::teachers'}
+    #     #groups_from_yml = self.connector.parse_yml_groups(mock_adobe_user_group)
+    #
+    #     deliverable_user_list = self.connector.load_users_and_groups(mock_adobe_user_group, [], True)
+    #
+    #
+    #     assert six.itervalues(users_result) != None
+    #
+    #     # def test_load_users_and_groups(self):
+    #     #     mock_adobe_user_group = {'courses::Alg-102::students', 'classes::Algebra I - Fall::teachers'}
+    #     #
+    #     #     deliverable_user_list = self.connector.load_users_and_groups(mock_adobe_user_group, [], True)
+    #     #
+    #     #     print(deliverable_user_list)
