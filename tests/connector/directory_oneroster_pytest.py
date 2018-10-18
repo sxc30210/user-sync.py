@@ -53,6 +53,10 @@ class TestOneRosterConnector(TestCase):
 
         assert expected_dict_format == return_dict_format
 
+    def test_exception_parse_yml_groups(self):
+
+        self.assertRaises(ValueError, lambda: self.connector.parse_yml_groups({'course::Alg-102::students'}))
+
     @patch('user_sync.connector.directory_oneroster.Authenticator.retrieve_api_token')
     def test_retrieve_api_token(self, MockCall):
         call = MockCall()
