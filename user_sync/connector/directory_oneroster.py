@@ -62,28 +62,26 @@ class OneRosterConnector(object):
 
     def __init__(self, caller_options):
 
-#       Get the configuration information and apply data from YAML
+        # Get the configuration information and apply data from YAML
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
+
         builder = user_sync.config.OptionsBuilder(caller_config)
-        options = builder.get_options()
-        self.options = options
         builder.set_string_value('user_identity_type', None)
         builder.set_string_value('logger_name', self.name)
 
-#       Values from connector-oneroster.yml, required for communication with One-Roster API
+        # Values from connector-oneroster.yml via builder
+        self.options = builder.get_options()
         self.host = builder.require_string_value('host')
-        self.api_token = builder.require_string_value('api_token_endpoint')
+        self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
         self.password = builder.require_string_value('password')
         self.username = builder.require_string_value('username')
-
-        # Country Code value, required from connector-oneroster.yml
         self.country_code = builder.require_string_value('country_code')
+        self.authtype = builder.require_string_value('authentication')
+        self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
+        self.logger = user_sync.connector.helper.create_logger(self.options)
+        self.apiconnector= self.load_connector(self.authtype)
 
-        # Identity Type of Users from User-Sync YML file
-        self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
-
-        self.logger = logger = user_sync.connector.helper.create_logger(options)
-        caller_config.report_unused_values(logger)
+        caller_config.report_unused_values(self.logger)
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
@@ -93,11 +91,7 @@ class OneRosterConnector(object):
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-
-        auth = Authenticator(self.username, self.password, self.api_token)
-        api_token = auth.retrieve_api_token()
-
-        conn = Connection(self.host, api_token=api_token)
+        conn = Connection(self.host, self.apiconnector)
 
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = dict()
@@ -153,104 +147,50 @@ class OneRosterConnector(object):
 
         return full_dict
 
+    def load_connector(self,authtype):
+        type = {
+            "oauth2" : OAuthConnector(self.username, self.password, self.api_token_endpoint)
+        }.get(str(authtype).lower(),None)
 
-class Authenticator:
-    """
-    description: Retrieves api token from One-Roster implementation, using user's credentials
-    :type username str()
-    :type password str()
-    :type token_endpoint str()
-    :rtype api_token str()
-    """
+        if type is None:
+            raise TypeError("Unrecognized authentication type: " + authtype)
+        return type
+
+
+class OAuthConnector:
 
     def __init__(self, username=None, password=None, token_endpoint=None):
-        self._username = username
-        self._password = password
-        self._token_endpoint = token_endpoint
+        self.username = username
+        self.password = password
+        self.token_endpoint = token_endpoint
+        self.req_headers = dict()
 
-    @property
-    def username(self):
-        return self._username
-
-    @property
-    def password(self):
-        return self._password
-
-    @property
-    def token_endpoint(self):
-        return self._token_endpoint
-
-    @username.setter
-    def username(self, username):
-        self._username = username
-
-    @password.setter
-    def password(self, password):
-        self._password = password
-
-    @token_endpoint.setter
-    def token_endpoint(self, token_endpoint):
-        self._token_endpoint = token_endpoint
-
-    @username.getter
-    def username(self):
-        return self._username
-
-    @password.getter
-    def password(self):
-        return self._password
-
-    @token_endpoint.getter
-    def token_endpoint(self):
-        return self._token_endpoint
-
-    def retrieve_api_token(self):
+    def authenticate(self):
         payload = dict()
         header = dict()
         payload['grant_type'] = 'client_credentials'
 
-        response = requests.post(Authenticator.__getattribute__(self, 'token_endpoint'),
-                          auth=(Authenticator.__getattribute__(self, 'username'),
-                                Authenticator.__getattribute__(self, 'password')),
-                          headers=header, data=payload)
+        response = requests.post(self.token_endpoint, auth=(self.username, self.password), headers=header, data=payload)
 
-        if response.ok is not True:
-            raise ValueError('Token Not Received with the following info:'
-                             + '  ' + 'status_code:' + str(response.status_code) + '\nmessage:' + response.text)
+        if response.status_code != 200:
+            raise ValueError('Token request failed:  ' + response.text)
 
-        return json.loads(response.content)['access_token']
+        self.req_headers['Authorization'] = "Bearer" + json.loads(response.content)['access_token']
+
+    def get(self, url=None):
+        return requests.get(url, headers=self.req_headers)
+
+
+
 
 
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""
 
-    def __init__(self, host_name=None, api_token=None):
-        self._api_token = api_token
-        self._host_name = host_name
-
-    @property
-    def api_token(self):
-        return self._api_token
-
-    @property
-    def host_name(self):
-        return self._host_name
-
-    @api_token.setter
-    def api_token(self, api_token):
-        self._api_token = api_token
-
-    @host_name.setter
-    def host_name(self, host_name):
-        self._host_name = host_name
-
-    @api_token.getter
-    def api_token(self):
-        return self._api_token
-
-    @host_name.getter
-    def host_name(self):
-        return self._host_name
+    def __init__(self, host_name=None, connector=None):
+        self.host_name = host_name
+        self.connector = connector
+        self.connector.authenticate()
 
     def get_user_list(self, group_filter, group_name, user_filter):
         """
@@ -260,16 +200,14 @@ class Connection:
         :type user_filter: str()
         :rtype parsed_json_list: list(str)
         """
-        header = dict()
-        payload = dict()
         parsed_json_list = list()
-        header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
+
         if group_filter == 'courses':
             class_list = self.get_classlist_for_course(group_name)
             for each_class in class_list:
                 sourced_id = class_list[each_class]
-                api_call = Connection.__getattribute__(self, 'host_name') + 'classes' + '/' + sourced_id + '/' + user_filter
-                response = requests.get(api_call, headers=header)
+                response = self.connector.get(self.host_name + 'classes' + '/' + sourced_id + '/' + user_filter)
+
                 if response.ok is False:
                     raise ValueError('No ' + user_filter + ' Found for:' + " " + group_name + "\nError Response Message:" + " " +
                                      response.text)
@@ -278,8 +216,7 @@ class Connection:
 
         else:
             sourced_id = self.get_sourced_id(group_filter, group_name)
-            api_endpoint_call = Connection.__getattribute__(self, 'host_name') + group_filter + '/' + sourced_id + '/' + user_filter
-            response = requests.get(api_endpoint_call, headers=header)
+            response = self.connector.get(self.host_name + group_filter + '/' + sourced_id + '/' + user_filter)
             if response.ok is False:
                 raise ValueError('No ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
                                  response.text)
@@ -294,13 +231,10 @@ class Connection:
         :type group_name: str()
         :rtype sourced_id: str()
         """
-        header = dict()
-        payload = dict()
         why = list()
-        header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
 
-        endpoint_sourced_id = Connection.__getattribute__(self, 'host_name') + group_filter
-        response = requests.get(endpoint_sourced_id, headers=header)
+        response = self.connector.get(self.host_name + group_filter)
+
         if response.ok is not True:
             raise ValueError('Non Successful Response'
                              + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
@@ -331,15 +265,11 @@ class Connection:
         :rtype class_list: list(str)
         """
 
-        header = dict()
-        payload = dict()
         class_list = dict()
-        header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
 
         sourced_id = self.get_sourced_id('courses', group_name)
-        endpoint_sourced_id = Connection.__getattribute__(self,
-                                                          'host_name') + 'courses' + '/' + sourced_id + '/' + 'classes'
-        response = requests.get(endpoint_sourced_id, headers=header)
+        response = self.connector.get(self.host_name + 'courses' + '/' + sourced_id + '/' + 'classes')
+
         if response.ok is not True:
             status = response.status_code
             message = response.reason
