@@ -21,7 +21,7 @@ api_token_endpoint: "https://mockroster.io/oauth/token"
 #credentials to oneroster
 username: 'oruser'
 password: 'secret'
-
+key_identifier: 'sourcedId'
 country_code: 'US'
 
 authentication: 'Oauth2'
