@@ -75,6 +75,7 @@ class OneRosterConnector(object):
         self.api_token = builder.require_string_value('api_token_endpoint')
         self.password = builder.require_string_value('password')
         self.username = builder.require_string_value('username')
+        self.key_identifier = builder.require_string_value('key_identifier')
 
         # Country Code value, required from connector-oneroster.yml
         self.country_code = builder.require_string_value('country_code')
@@ -102,6 +103,7 @@ class OneRosterConnector(object):
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = dict()
         rp = ResultParser()
+        key_identifier = self.key_identifier
 
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
@@ -109,8 +111,8 @@ class OneRosterConnector(object):
             del inner_dict['original_group']
             for group_name in inner_dict:
                 user_filter = inner_dict[group_name]
-                users_list = conn.get_user_list(group_filter, group_name, user_filter)
-                users_result.update(rp.parse_results(users_list, extended_attributes, original_group))
+                users_list = conn.get_user_list(group_filter, group_name, user_filter, key_identifier)
+                users_result.update(rp.parse_results(users_list, extended_attributes, original_group, key_identifier))
 
         for first_dict in users_result:
             values = users_result[first_dict]
@@ -252,12 +254,13 @@ class Connection:
     def host_name(self):
         return self._host_name
 
-    def get_user_list(self, group_filter, group_name, user_filter):
+    def get_user_list(self, group_filter, group_name, user_filter, key_identifier):
         """
         description:
         :type group_filter: str()
         :type group_name: str()
         :type user_filter: str()
+        :type key_identifier: str()
         :rtype parsed_json_list: list(str)
         """
         header = dict()
@@ -265,10 +268,10 @@ class Connection:
         parsed_json_list = list()
         header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
         if group_filter == 'courses':
-            class_list = self.get_classlist_for_course(group_name)
+            class_list = self.get_classlist_for_course(group_name, key_identifier)
             for each_class in class_list:
-                sourced_id = class_list[each_class]
-                api_call = Connection.__getattribute__(self, 'host_name') + 'classes' + '/' + sourced_id + '/' + user_filter
+                key_id = class_list[each_class]
+                api_call = Connection.__getattribute__(self, 'host_name') + 'classes' + '/' + key_id + '/' + user_filter
                 response = requests.get(api_call, headers=header)
                 if response.ok is False:
                     raise ValueError('No ' + user_filter + ' Found for:' + " " + group_name + "\nError Response Message:" + " " +
@@ -277,8 +280,8 @@ class Connection:
                 parsed_json_list.extend(parsed_response)
 
         else:
-            sourced_id = self.get_sourced_id(group_filter, group_name)
-            api_endpoint_call = Connection.__getattribute__(self, 'host_name') + group_filter + '/' + sourced_id + '/' + user_filter
+            key_id = self.get_key_identifier(group_filter, group_name, key_identifier)
+            api_endpoint_call = Connection.__getattribute__(self, 'host_name') + group_filter + '/' + key_id + '/' + user_filter
             response = requests.get(api_endpoint_call, headers=header)
             if response.ok is False:
                 raise ValueError('No ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
@@ -287,7 +290,7 @@ class Connection:
 
         return parsed_json_list
 
-    def get_sourced_id(self, group_filter, group_name):
+    def get_key_identifier(self, group_filter, group_name, key_identifier):
         """
         description: Returns sourcedId for targeted group_name from One-Roster
         :type group_filter: str()
@@ -299,8 +302,8 @@ class Connection:
         why = list()
         header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
 
-        endpoint_sourced_id = Connection.__getattribute__(self, 'host_name') + group_filter
-        response = requests.get(endpoint_sourced_id, headers=header)
+        endpoint_key_id = Connection.__getattribute__(self, 'host_name') + group_filter
+        response = requests.get(endpoint_key_id, headers=header)
         if response.ok is not True:
             raise ValueError('Non Successful Response'
                              + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
@@ -315,19 +318,23 @@ class Connection:
             esless = 'name'
         for x in parsed_json:
             if ''.join(x[esless].split()).lower() == group_name:
-                sourced_id = x['sourcedId']
-                why.append(sourced_id)
+                try:
+                    key_id = x[key_identifier]
+                except:
+                    raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+                why.append(key_id)
                 break
         if why.__len__() != 1:
-            raise ValueError('No Source Ids Found for:' + " " + group_filter + ":" + " " + group_name)
+            raise ValueError('No Key Ids Found for:' + " " + group_filter + ":" + " " + group_name)
 
         return_value = why[0]
         return return_value
 
-    def get_classlist_for_course(self, group_name):
+    def get_classlist_for_course(self, group_name, key_identifier):
         """
         description: returns list of sourceIds for classes of a course (group_name)
         :type group_name: str()
+        :type key_identifier: str()
         :rtype class_list: list(str)
         """
 
@@ -336,9 +343,9 @@ class Connection:
         class_list = dict()
         header['Authorization'] = "Bearer" + Connection.__getattribute__(self, 'api_token')
 
-        sourced_id = self.get_sourced_id('courses', group_name)
+        key_id = self.get_key_identifier('courses', group_name, key_identifier)
         endpoint_sourced_id = Connection.__getattribute__(self,
-                                                          'host_name') + 'courses' + '/' + sourced_id + '/' + 'classes'
+                                                          'host_name') + 'courses' + '/' + key_id + '/' + 'classes'
         response = requests.get(endpoint_sourced_id, headers=header)
         if response.ok is not True:
             status = response.status_code
@@ -348,36 +355,38 @@ class Connection:
         parsed_json = json.loads(response.content)
 
         for each_class in parsed_json:
-            class_sourced_id = each_class['sourcedId']
+            class_key_id = each_class[key_identifier]
             class_name = each_class['classCode']
-            class_list[class_name] = class_sourced_id
+            class_list[class_name] = class_key_id
 
         return class_list
 
 
 class ResultParser:
 
-    def parse_results(self, result_set, extended_attributes, original_group):
+    def parse_results(self, result_set, extended_attributes, original_group, key_identifier):
         """
         description: parses through user_list from API calls, to create final user objects
         :type result_set: list(dict())
         :type extended_attributes: list(str)
         :type original_group: str()
+        :type key_identifier: str()
         :rtype users_dict: dict(constructed user objects)
         """
         users_dict = dict()
         for user in result_set:
             if user['status'] == 'active':
-                returned_user = self.create_user_object(user, extended_attributes, original_group)
-                users_dict[user['sourcedId']] = returned_user
+                returned_user = self.create_user_object(user, extended_attributes, original_group, key_identifier)
+                users_dict[user[key_identifier]] = returned_user
         return users_dict
 
-    def create_user_object(self, user, extended_attributes, original_group):
+    def create_user_object(self, user, extended_attributes, original_group, key_identifier):
         """
         description: Using user's API information to construct final user objects
         :type user: dict()
         :type extended_attributes: list(str)
         :type original_group: str()
+        :type key_identifier: str()
         :rtype: formatted_user: dict(user object)
         """
         formatted_user = dict()
@@ -408,6 +417,7 @@ class ResultParser:
         source_attributes['type'] = user['type']
         source_attributes['userId'] = user['userId']
         source_attributes['userIds'] = user['userIds']
+        source_attributes[key_identifier] = user[key_identifier]
 
         #       adds any extended_attribute values
         #       from the one-roster user information into the final user object utilized by the UST
