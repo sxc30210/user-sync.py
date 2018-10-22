@@ -24,7 +24,7 @@ password: 'secret'
 
 country_code: 'US'
 
-authentication: 'Oauth'
+authentication: 'Oauth2'
 
 #(optional) Additional One Roster User information (source_attributes), that can be used to create final user object.
 # attributes will be used and manipulated within the extension-config.yml file
