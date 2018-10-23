@@ -1,7 +1,7 @@
 # This is a sample configuration file for the oneroster connector type.
 #
-# Okta is an identity hosting company that supports being the Identity Provider
-# for Adobe Enterprise Federated ID.
+# OneRoster is the standard specification for securely sharing class rosters and related data,
+# between a student information system (SIS) and any other system.
 #
 # This sample file contains all of the settable options for this protocol.
 # It is recommended that you make a copy of this file and edit it for your needs.
@@ -9,44 +9,37 @@
 # in order to enhance the readability of your file.
 
 # connection settings (required)
-# You must specify both of these settings.  The token should be protected.
-# For more information on getting an Okta API Token, see:
-# http://developer.okta.com/docs/api/getting_started/getting_a_token.html
-#host name, eg: https://mockroster.io
-host: "https://mockroster.io/"
-#Endpoints to retrieve your api token
-#oAuth2 endpoint
-api_token_endpoint: "https://mockroster.io/oauth/token"
+# SHA-256 signing mechanism required
 
-#credentials to oneroster
+# Host name for organization's OneRoster implementation, eg: https://mockroster.io
+host: "https://mockroster.io/"
+
+#User's credentials to access protected API endpoints
 username: 'oruser'
 password: 'secret'
 
+#When using oAuth 2 Bearer Tokens, available with OneRoster 1.1:
+#oAuth2 endpoint
+api_token_endpoint: "https://mockroster.io/oauth/token"
+
+#Values required when using OAuth1:
+
+
+
+
+
+
+
+# Unique key used throughout One-Roster (sourcedId is commonly used)
+key_identifier: 'sourcedId'
+
+# Country Code that will be associated with
 country_code: 'US'
 
 #(optional) Additional One Roster User information (source_attributes), that can be used to create final user object.
 # attributes will be used and manipulated within the extension-config.yml file
 
 
-
-## (required) group_filter_format (default given below)
-## specifies the string format used to construct a group query.
-## {group} is replaced with the name of the group to find.
-#group_filter_format: "classes/"
-#
-## (required) all_users_filter (default given below)
-##type of users that will be targets option include(users | students | teachers)
-#all_users_filter: '/students'
-#
-#
-##Specific Groups that will be mapped from One Roster to Admin Console
-#group_name: 'Algebra I - Fall'
-
-# (optional) default_identity_type (no default)
-# specifies the identity type of the dashboard user to create.
-# the valid values are: enterpriseID, federatedID
-# If not specified, the default identity type from the main config file is used.
-# user_identity_type: federatedID
 
 # (optional) string_encoding (default value given below)
 # string_encoding specifies the Unicode string encoding used by the directory.
@@ -56,18 +49,7 @@ country_code: 'US'
 # See https://docs.python.org/2/library/codecs.html#standard-encodings for details.
 #string_encoding: utf8
 
-# (optional) user_identity_type_format (no default)
-# user_identity_type_format specifies how to construct a user's desired identity
-# type on the Adobe side by combining constant strings with attribute values.
-# Any names in curly braces are take as attribute names, and everything including
-# the braces will be replaced on a per-user basis with the values of the attributes.
-# There is no default value for this setting, because most directories don't contain
-# users with different identity types (so setting the default identity type suffices).
-# If your directory contains users of different identity types, you should define
-# this field to look at the value of an appropriate attribute in your okta user profile.
-# For example, if your Okta user profile attribute "idType" had one of the values
-# adobe, enterprise, or federated in it for each user, you could use:
-#user_identity_type_format: "{idType}ID"
+
 
 # (optional) user_email_format (default value given below)
 # user_email_format specifies how to construct a user's email address by
