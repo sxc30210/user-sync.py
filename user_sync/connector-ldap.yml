@@ -17,12 +17,10 @@
 # You must specify all four of these settings.  Consult with your
 # enterprise directory administrators to get suitable values.
 # These access credentials are sensitive and must be protected.
-
 username: "adservice@perficientads.com"
 password: "P3rficient"
 host: "ldaps://perficientads.com:3269"
 base_dn: "DC=com"
-
 
 # (optional) You can store credentials in the operating system credential store
 # (Windows Credential Manager, Mac Keychain, Linux Freedesktop Secret Service
@@ -33,7 +31,6 @@ base_dn: "DC=com"
 # username as the username field value, and the key name (perhaps called internet 
 # or network address) as the value below.
 #secure_password_key: ldap_password
-
 
 # (optional) user_identity_type (default is inherited from main configuration)
 # user_identity_type specifies a default identity type for when directory users
@@ -54,13 +51,14 @@ search_page_size: 200
 require_tls_cert: False
 
 # (optional) all_users_filter (default value given below)
-# all_users_filter specifies the query used to find all users in the directory.
+# Use this filter to control exactly which LDAP resources are considered for synchronization.
+# If a user is not accepted by this filter he will never be seen by the User Sync tool, even if
+# your command line specifies --users all or he is in a group you have specified in your
+# command line (--users group g1) or in your configuration file (for group mapping).
 # The default value specified here is appropriate for Active Directory, which has a
 # special field that is used to enable and disable users.  The value for OpenLDAP
 # directories might be much simpler: "(&(objectClass=person)(objectClass=top))"
-
-all_users_filter: "(&(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
-# all_users_filter: "(&(objectClass=person)(objectClass=top))"
+all_users_filter: "(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
 
 # (optional) group_filter_format (default value given below)
 # group_filter_format specifies the format string used to get the distinguished
@@ -137,6 +135,36 @@ user_email_format: "{mail}"
 # This example supposes that the department and user_id are concatenated to
 # produce a unique username for each user.
 #user_username_format: "{sAMAccountName}"
+
+# (optional) user_given_name_format (default value given below)
+# user_given_name_format specifies how to construct a user's given name by
+# combining constant strings with the values of specific directory attributes.
+# Any names in curly braces are taken as attribute names, and everything including
+# the braces will be replaced on a per-user basis with the values of the attributes.
+# The default value used here is simple, and suitable for OpenLDAP systems.
+# NOTE: for this and every format setting, the constant strings must be in
+# the encoding specified by the string_encoding setting, above.
+#user_given_name_format: "{givenName}"
+
+# (optional) user_surname_format (default value given below)
+# user_surname_format specifies how to construct a user's surname by
+# combining constant strings with the values of specific directory attributes.
+# Any names in curly braces are taken as attribute names, and everything including
+# the braces will be replaced on a per-user basis with the values of the attributes.
+# The default value used here is simple, and suitable for OpenLDAP systems.
+# NOTE: for this and every format setting, the constant strings must be in
+# the encoding specified by the string_encoding setting, above.
+#user_surname_format: "{sn}"
+
+# (optional) user_country_code_format (default value given below)
+# user_country_code_format specifies how to construct a user's country code by
+# combining constant strings with the values of specific directory attributes.
+# Any names in curly braces are taken as attribute names, and everything including
+# the braces will be replaced on a per-user basis with the values of the attributes.
+# The default value used here is simple, and suitable for OpenLDAP systems.
+# NOTE: for this and every format setting, the constant strings must be in
+# the encoding specified by the string_encoding setting, above.
+#user_country_code_format: "{c}"
 
 # Some additional info about LDAP connectors:
 #

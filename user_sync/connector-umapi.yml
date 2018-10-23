@@ -42,44 +42,16 @@ enterprise:
   tech_acct: "B7A639EA5B23D1D10A494022@techacct.adobe.com"
   priv_key_path: "private.key"
 
-  # (optional) As an alternative to priv_key_path, you can place the private key
-  # data directly in this file.  To do this, remove the priv_key_path entry above
-  # and uncomment the following entry.  Replace the sample data with the data
+  # (optional) As an alternative to priv_key_path, you can place the private key 
+  # data directly in this file.  To do this, remove the priv_key_path entry above 
+  # and uncomment the following entry.  Replace the sample data with the data 
   # from your private key file (which will be much longer).
   #priv_key_data: |
   #   -----BEGIN RSA PRIVATE KEY-----
   #   MIIf74jfd84oAgEA6brj4uZ2f1Nkf84j843jfjjJGHYJ8756GHHGGz7jLyZWSscH
   #   CoifurKJY763GHKL98mJGYxWSBvhlWskdjdatagoeshere986fKFUNGd74kdfuEH
   #   -----END RSA PRIVATE KEY-----
-#  priv_key_data: |
-#-----BEGIN PRIVATE KEY-----
-#MIIEwAIBADANBgkqhkiG9w0BAQEFAASCBKowggSmAgEAAoIBAQDckhY0sPBONHOh
-#j+xlW7TujPiKI4IzD/1Lwf+dRS8qyOUwW0j9Ugu4T+BP71VGnS+eDhJwo3f2GwPj
-#+TQLn3nC2/rDgpNguWpq++0VWWqhkzONJ/HhhXXSwr6d+ZvzBoLPEugrx6Jl77UK
-#3waKHgBPpM7KVD44DNDvdAKg6ND2WitLvwuQsLMaJj6khREI/Fi9+KTcsvPNVwJ0
-#cD0MDv4Wgbh8dnbtI51wzXRWZ6zWQDiIkcwuPiJTfC71pstBt+AAQwQvVphTPQbF
-#6PVGy+/SKaFvHgrjTCOz3EJN3dsBQ8qO3M2usJRYTfiSYuxv/Ezwf+rWU6paqosb
-#nE1ft1dVAgMBAAECggEBALReYfpElr3c9pGvd8iK7bIFZVjRIK9Q6/j/c1/QK3n5
-#PjIE8/LzHNJjvzKerEVKVJ4TM9EYXAjMnqnWJ1E54AAQk0c9h/cYqIVD7eP/cssd
-#7JIJkCqzUF5BEk9sxrI9KMrc0y652XsyQgHZzycy0V5Pjyq1KQv8rv6hB2U9/WL1
-#ZLoV2hZZ+G8Yuyach1eBNPgDvFa+KOzwOwo2UwqdTR9WWfyW/FhrbjpfQfkk68wC
-#qEgPC0ybntoytSv7yzbR6OEnRp0nWGJlzMB/zuyY0d2EnSOHfFMkOoCbP2g50GAe
-#nSR780S3sT12QvrKm1o+dXhLA2qQ8Ntm2RY5KqNU/AECgYEA8BNpm0IKvEssmRnp
-#siDIwDUlEocFhuTXA9JXrkUfAOn+T7Xi3abwOiRrZqEC2Dfp+QRHpu7rVf0ZdGm3
-#qGbj/MIiBZ4jKtdAyEPuG2paPUjpBWZazEBIG/OSnVcp3jOIKVa3YfgqpFbqy2v6
-#JY3w2SUvYJLExOWFbq+2N4K2siECgYEA6zN32aUb0ut6Tf6qlwZtPYofVJstj43Z
-#asTdYFeAetb46bxx7VlsfK7zXPa/CCCeOVnprPfnx9aqMXBM4Ws3ZmtCeLfiRYDi
-#rsCXiKwQytk+MHWTcFdsrFtV1bWAxulnuTQNTvjtFrE3JqYFAdz94zIl3/Pl5Q4B
-#SE5PUw/KprUCgYEA2TTXEW9ZAy8IdKRrOYxL1QrANdkPeRJGLuD6D2PePxd1zWyE
-#i4HkStZ0jXATgMhl2bSzlycGqM/LXfXgAm7EywRhf6+ppbMGm6pKHWfFqTj0Crym
-#XbGzDAb9mXkpGi6JfM1GMU80VWeGGvHgamXXiL8J9FgVywbWCGTVebe7z8ECgYEA
-#i0Z2+hKjX0rBqd3b9oJ/valE1DzvxcohrO/Wh25JTnRuATrt27bQXyTaR3p1tMJb
-#72omzZ4fSl77eTsey31J2QQ64HFDNBUWJpU1JmF9sCDkip2VKTkbyRRsx5grIZ6l
-#JS6FkvYkrwNRvTkiTfAnB5pygyNSR0j7yW1V28HGJuECgYEA38oRs3cx5ZtRragw
-#W85P0Bp6y5VHM8IXjdOyWZnubHtTWV02FDd8tgnAUJvteZAKyJZaOMNE5Gnn0U/S
-#Dcr2OTXl4QGoU6fG0CTWEJ/1sx2MHzRD6ahqhykkzWkqQ7JKTdluxegcrS8k5Hbp
-#K3x+CaZqB40dcQiX3GyS40zhBwo=
-#-----END PRIVATE KEY-----
+
   # (optional) You can store credentials in the operating system credential store
   # (Windows Credential Manager, Mac Keychain, Linux Freedesktop Secret Service
   # or KWallet - these will be built into the Linux distribution).

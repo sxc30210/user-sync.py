@@ -36,6 +36,8 @@ key_identifier: 'sourcedId'
 # Country Code that will be associated with
 country_code: 'US'
 
+authentication: 'Oauth2'
+
 #(optional) Additional One Roster User information (source_attributes), that can be used to create final user object.
 # attributes will be used and manipulated within the extension-config.yml file
 
