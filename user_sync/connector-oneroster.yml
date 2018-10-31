@@ -15,14 +15,19 @@
 host: "https://mockroster.io/"
 
 #User's credentials to access protected API endpoints
-username: 'oruser'
-password: 'secret'
+client_id: 'oruser'
+client_secret: 'secret'
+
+
 
 #When using oAuth 2 Bearer Tokens, available with OneRoster 1.1:
 #oAuth2 endpoint
+
 api_token_endpoint: "https://mockroster.io/oauth/token"
 
-#Values required when using OAuth1:
+#If using basic header authentication, must change this value to True
+basic_header: 'False'
+
 
 
 

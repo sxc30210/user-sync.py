@@ -23,6 +23,11 @@ import json
 import six
 import string
 
+from requests_oauthlib import OAuth1Session
+from requests_oauthlib import OAuth2Session
+from requests.auth import HTTPBasicAuth
+from oauthlib.oauth2 import BackendApplicationClient
+
 
 import user_sync.config
 import user_sync.connector.helper
@@ -73,8 +78,9 @@ class OneRosterConnector(object):
         self.options = builder.get_options()
         self.host = builder.require_string_value('host')
         self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
-        self.password = builder.require_string_value('password')
-        self.username = builder.require_string_value('username')
+        self.client_secret = builder.require_string_value('client_secret')
+        self.client_id = builder.require_string_value('client_id')
+        self.basic_header = builder.require_string_value('basic_header')
         self.key_identifier = builder.require_string_value('key_identifier')
         self.country_code = builder.require_string_value('country_code')
         self.authtype = builder.require_string_value('authentication')
@@ -151,7 +157,9 @@ class OneRosterConnector(object):
 
     def load_connector(self,authtype):
         type = {
-            "oauth2" : OAuthConnector(self.username, self.password, self.api_token_endpoint)
+            "oauth2" : OAuthConnector2(self.client_id, self.client_secret, self.api_token_endpoint),
+            # "oauth1" : OAuthConnector1(self.username, self.password, self.host_name_oauth1),
+            "oauth2lib": OAuthConnector2_With_Lib(self.client_id, self.client_secret, self.basic_header, self.api_token_endpoint)
         }.get(str(authtype).lower(),None)
 
         if type is None:
@@ -159,11 +167,11 @@ class OneRosterConnector(object):
         return type
 
 
-class OAuthConnector:
+class OAuthConnector2:
 
-    def __init__(self, username=None, password=None, token_endpoint=None):
-        self.username = username
-        self.password = password
+    def __init__(self, client_id=None, client_secret=None, token_endpoint=None):
+        self.client_id = client_id
+        self.client_secret = client_secret
         self.token_endpoint = token_endpoint
         self.req_headers = dict()
 
@@ -172,7 +180,7 @@ class OAuthConnector:
         header = dict()
         payload['grant_type'] = 'client_credentials'
 
-        response = requests.post(self.token_endpoint, auth=(self.username, self.password), headers=header, data=payload)
+        response = requests.post(self.token_endpoint, auth=(self.client_id, self.client_secret), headers=header, data=payload)
 
         if response.status_code != 200:
             raise ValueError('Token request failed:  ' + response.text)
@@ -182,8 +190,75 @@ class OAuthConnector:
     def get(self, url=None):
         return requests.get(url, headers=self.req_headers)
 
+class OAuthConnector2_With_Lib:
+
+    """
+    The OAuthLib provides multiple optional security measures when implementing OAuth2
+    """
+
+    def __init__(self, client_id=None, client_secret=None, basic_header=False, token_endpoint=None):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.basic_header = basic_header
+        self.token_endpoint = token_endpoint
+        self.token = str()
+
+    def authentication(self):
+        payload = dict()
+        header = dict()
+
+        client = BackendApplicationClient(client_id=self.client_id)
+        oauth = OAuth2Session(client=client)
+
+        if self.basic_header is True:
+            auth = HTTPBasicAuth(self.client_id, self.client_secret)
+            self.token = oauth.fetch_token(self.token_endpoint, auth=auth)
+
+        else:
+            self.token = oauth.fetch_token(token_url=self.token_endpoint, client_id=self.client_id,
+                                       client_secret=self.client_secret)
+
+    def get(self, url=None):
+        client = OAuth2Session(self.client_id, token=self.token)
+
+        return client.get(url, token=self.token)
 
 
+# class OAuthConnector1:
+#
+#     def __init__(self, username=None, password=None, host_name_oauth1=None):
+#         self.username = username
+#         self.password = password
+#         self.host_name_oauth1 = host_name_oauth1
+#         self.req_headers = dict()
+#
+#     def authenticate(self):
+#         payload = dict()
+#         header = dict()
+#         host = self.host_name_oauth1
+#         key = self.username
+#         secret = self.password
+#         oauth = OAuth1Session(key, secret)
+#         fetch_response = oauth.fetch_request_token(host + 'oauth/request_token')
+#         resource_owner_key = fetch_response.get('oauth_token')
+#         resource_owner_secret = fetch_response.get('oauth_token_secret')
+#
+#         authorization_url = oauth.authorization_url(host + 'oauth/authorize')
+#         print('Please go here and authorize,', authorization_url)
+#         redirect_response = input('Paste the full redirect URL here: ')
+#         oauth_response = oauth.parse_authorization_response(redirect_response)
+#         verifier = oauth_response.get('oauth_verifier')
+#
+#         oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret, verifier)
+#
+#         oauth_tokens = oauth.fetch_access_token(host + 'oauth/access_token')
+#
+#         resource_owner_key = oauth_tokens.get('oauth_token')
+#         resource_owner_secret = oauth_tokens.get('oauth_token_secret')
+#
+#         protected_url = 'https://api.twitter.com/1/account/settings.json'
+#         oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret)
+#         r = requests.get(protected_url, oauth)
 
 
 class Connection:
@@ -230,9 +305,10 @@ class Connection:
 
     def get_key_identifier(self, group_filter, group_name, key_identifier):
         """
-        description: Returns sourcedId for targeted group_name from One-Roster
+        description: Returns key_identifier (eg: sourcedID) for targeted group_name from One-Roster
         :type group_filter: str()
         :type group_name: str()
+        :type key_identifier: str()
         :rtype sourced_id: str()
         """
         why = list()
