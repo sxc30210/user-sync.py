@@ -80,13 +80,12 @@ class OneRosterConnector(object):
         self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
         self.client_secret = builder.require_string_value('client_secret')
         self.client_id = builder.require_string_value('client_id')
-        self.basic_header = builder.require_string_value('basic_header')
         self.key_identifier = builder.require_string_value('key_identifier')
         self.country_code = builder.require_string_value('country_code')
-        self.authtype = builder.require_string_value('authentication')
+        self.auth_specs = builder.require_value('authentication_type', type({}))
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
-        self.apiconnector= self.load_connector(self.authtype)
+        self.apiconnector= self.load_connector(self.auth_specs)
 
         caller_config.report_unused_values(self.logger)
 
@@ -155,19 +154,28 @@ class OneRosterConnector(object):
 
         return full_dict
 
-    def load_connector(self,authtype):
-        type = {
-            "oauth2" : OAuthConnector2(self.client_id, self.client_secret, self.api_token_endpoint),
-            # "oauth1" : OAuthConnector1(self.username, self.password, self.host_name_oauth1),
-            "oauth2lib": OAuthConnector2_With_Lib(self.client_id, self.client_secret, self.basic_header, self.api_token_endpoint)
-        }.get(str(authtype).lower(),None)
+    def load_connector(self, auth_specs):
+        """
+        :description: Loads appropriate authentication protocol, using the Authentication specifications from connector-oneroster.yml.
+        :type auth_specs: dict()
+        :rtype: class(Proper Connector)
+        """
+
+        if auth_specs['auth_type'] == 'oauth2':
+            type = OAuthConnector2(self.client_id, self.client_secret, auth_specs['basic_header'], self.api_token_endpoint)
+
+        elif auth_specs['auth_type'] == 'oauth2_non_lib':
+            type = OAuthConnector2_NON_LIB(self.client_id, self.client_secret, self.api_token_endpoint)
+
+        else:
+            type = OAuthConnector1(self.client_id, self.client_secret, self.api_token_endpoint)
 
         if type is None:
-            raise TypeError("Unrecognized authentication type: " + authtype)
+            raise TypeError("Unrecognized authentication type: " + auth_specs['auth_type'])
         return type
 
 
-class OAuthConnector2:
+class OAuthConnector2_NON_LIB:
 
     def __init__(self, client_id=None, client_secret=None, token_endpoint=None):
         self.client_id = client_id
@@ -190,20 +198,21 @@ class OAuthConnector2:
     def get(self, url=None):
         return requests.get(url, headers=self.req_headers)
 
-class OAuthConnector2_With_Lib:
+class OAuthConnector2:
 
     """
     The OAuthLib provides multiple optional security measures when implementing OAuth2
     """
 
-    def __init__(self, client_id=None, client_secret=None, basic_header=False, token_endpoint=None):
+    #def __init__(self, client_id=None, client_secret=None, basic_header=False, token_endpoint=None):
+    def __init__(self, client_id=None, client_secret=None, basic_header=None, token_endpoint=None):
         self.client_id = client_id
         self.client_secret = client_secret
         self.basic_header = basic_header
         self.token_endpoint = token_endpoint
         self.token = str()
 
-    def authentication(self):
+    def authenticate(self):
         payload = dict()
         header = dict()
 
@@ -224,42 +233,44 @@ class OAuthConnector2_With_Lib:
         return client.get(url, token=self.token)
 
 
-# class OAuthConnector1:
-#
-#     def __init__(self, username=None, password=None, host_name_oauth1=None):
-#         self.username = username
-#         self.password = password
-#         self.host_name_oauth1 = host_name_oauth1
-#         self.req_headers = dict()
-#
-#     def authenticate(self):
-#         payload = dict()
-#         header = dict()
-#         host = self.host_name_oauth1
-#         key = self.username
-#         secret = self.password
-#         oauth = OAuth1Session(key, secret)
-#         fetch_response = oauth.fetch_request_token(host + 'oauth/request_token')
-#         resource_owner_key = fetch_response.get('oauth_token')
-#         resource_owner_secret = fetch_response.get('oauth_token_secret')
-#
-#         authorization_url = oauth.authorization_url(host + 'oauth/authorize')
-#         print('Please go here and authorize,', authorization_url)
-#         redirect_response = input('Paste the full redirect URL here: ')
-#         oauth_response = oauth.parse_authorization_response(redirect_response)
-#         verifier = oauth_response.get('oauth_verifier')
-#
-#         oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret, verifier)
-#
-#         oauth_tokens = oauth.fetch_access_token(host + 'oauth/access_token')
-#
-#         resource_owner_key = oauth_tokens.get('oauth_token')
-#         resource_owner_secret = oauth_tokens.get('oauth_token_secret')
-#
-#         protected_url = 'https://api.twitter.com/1/account/settings.json'
-#         oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret)
-#         r = requests.get(protected_url, oauth)
+class OAuthConnector1:
 
+    def __init__(self, client_id=None, client_secret=None, host_name_oauth1=None):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.host_name_oauth1 = host_name_oauth1
+        self.req_headers = dict()
+
+    def authenticate(self):
+        payload = dict()
+        header = dict()
+        host = self.host_name_oauth1
+        key = self.client_id
+        secret = self.client_secret
+        oauth = OAuth1Session(key, secret)
+        fetch_response = oauth.fetch_request_token(host + 'oauth/request_token')
+        resource_owner_key = fetch_response.get('oauth_token')
+        resource_owner_secret = fetch_response.get('oauth_token_secret')
+
+        authorization_url = oauth.authorization_url(host + 'oauth/authorize')
+        print('Please go here and authorize,', authorization_url)
+        redirect_response = input('Paste the full redirect URL here: ')
+        oauth_response = oauth.parse_authorization_response(redirect_response)
+        verifier = oauth_response.get('oauth_verifier')
+
+        oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret, verifier)
+
+        oauth_tokens = oauth.fetch_access_token(host + 'oauth/access_token')
+
+        resource_owner_key = oauth_tokens.get('oauth_token')
+        resource_owner_secret = oauth_tokens.get('oauth_token_secret')
+
+        protected_url = 'https://api.twitter.com/1/account/settings.json'
+        oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret)
+        r = requests.get(protected_url, oauth)
+
+    def get(self, url=None):
+        return "users"
 
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""

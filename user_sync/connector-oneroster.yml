@@ -19,21 +19,7 @@ client_id: 'oruser'
 client_secret: 'secret'
 
 
-
-#When using oAuth 2 Bearer Tokens, available with OneRoster 1.1:
-#oAuth2 endpoint
-
 api_token_endpoint: "https://mockroster.io/oauth/token"
-
-#If using basic header authentication, must change this value to True
-basic_header: 'False'
-
-
-
-
-
-
-
 
 # Unique key used throughout One-Roster (sourcedId is commonly used)
 key_identifier: 'sourcedId'
@@ -41,7 +27,20 @@ key_identifier: 'sourcedId'
 # Country Code that will be associated with
 country_code: 'US'
 
-authentication: 'Oauth2'
+#Authorization framework used to secure OneRoster endpoints
+authentication_type:
+
+    #auth_type: 'oauth2'
+    #(optional) Change basic_header option to True when using the authorizatoin server requires the HTTP Basic authentication scheme,
+    #when authenticating clients, that were issued a client password
+    #basic_header: 'True'
+
+    #auth_type: 'oauth1'
+
+    auth_type: 'oauth2_non_lib'
+
+
+
 
 #(optional) Additional One Roster User information (source_attributes), that can be used to create final user object.
 # attributes will be used and manipulated within the extension-config.yml file
