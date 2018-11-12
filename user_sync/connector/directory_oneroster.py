@@ -417,7 +417,8 @@ class ResultParser:
 
         #       User information available from One-Roster
         source_attributes['email'] = formatted_user['email'] = user['email']
-        source_attributes['username'] = formatted_user['username'] = user['username']
+        formatted_user['username'] = formatted_user['email']
+        source_attributes['username'] = user['username']
         source_attributes['givenName'] = formatted_user['firstname'] = user['givenName']
         source_attributes['familyName'] = formatted_user['lastname'] = user['familyName']
         source_attributes['domain'] = formatted_user['domain'] = user_domain
