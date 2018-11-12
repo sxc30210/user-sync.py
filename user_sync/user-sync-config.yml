@@ -176,9 +176,9 @@ directory_users:
     # the "Copy Editors" user group has been assigned access to appropriate
     # Adobe products, such as InDesign and InCopy.)
     # [You will need to edit or remove these examples.]
-    - directory_group: "classes::Art ii -Spring::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
+#    - directory_group: "classes::Art ii -Spring::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
 #
 #    - directory_group: "courses::Phy-102::students"
 #      adobe_groups:
@@ -194,15 +194,26 @@ directory_users:
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
 
-
-    - directory_group: "courses::Alg-102::students"
+    - directory_group: "classes::Algebra I - Fall::students"
       adobe_groups:
         - "Mock Roster Test --Mike"
-#
+
+    - directory_group: "classes::Geography I - Spring::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
+    - directory_group: "classes::Art I - Fall::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
+#    - directory_group: "courses::Alg-102::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
+##
 #    - directory_group: "classes::Algebra II - Fall::students"
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
-#
+##
 #    - directory_group: "schools::Spring Valley Elementary School::students"
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"

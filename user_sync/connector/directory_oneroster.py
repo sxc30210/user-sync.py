@@ -21,6 +21,7 @@
 import json
 import requests
 import six
+import re
 from oauthlib.oauth2 import BackendApplicationClient
 from requests.auth import HTTPBasicAuth
 from requests_oauthlib import OAuth1Session
@@ -94,11 +95,9 @@ class OneRosterConnector(object):
         :rtype (bool, iterable(dict))
         """
         conn = Connection(self.host, self.apiconnector)
-
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = dict()
-        rp = ResultParser()
-        key_identifier = self.key_identifier
+
 
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
@@ -106,8 +105,8 @@ class OneRosterConnector(object):
             del inner_dict['original_group']
             for group_name in inner_dict:
                 user_filter = inner_dict[group_name]
-                users_list = conn.get_user_list(group_filter, group_name, user_filter, key_identifier)
-                users_result.update(rp.parse_results(users_list, extended_attributes, original_group, key_identifier))
+                users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier)
+                users_result.update(ResultParser.parse_results(users_list, extended_attributes, original_group, self.key_identifier))
 
         for first_dict in users_result:
             values = users_result[first_dict]
@@ -140,7 +139,8 @@ class OneRosterConnector(object):
                 raise ValueError("Incorrect group_filter: " + group_filter + " .... must be either: classes, courses, or schools")
             if user_filter not in ['students', 'teachers', 'users']:
                 raise ValueError("Incorrect user_filter: " + user_filter + " .... must be either: students, teachers, or users")
-            group_name = ''.join(group_name.split())
+
+            group_name = re.sub(r'(\s)','',group_name)
             if group_filter in full_dict:
                 full_dict[group_filter][group_name] = user_filter
                 full_dict[group_filter]['original_group'] = text
@@ -323,7 +323,7 @@ class Connection:
         else:
             esless = 'name'
         for x in parsed_json:
-            if ''.join(x[esless].split()).lower() == group_name:
+            if re.sub(r'(\s)','',x[esless]).lower() == group_name:
                 try:
                     key_id = x[key_identifier]
                 except:
@@ -366,7 +366,9 @@ class Connection:
 
 class ResultParser:
 
-    def parse_results(self, result_set, extended_attributes, original_group, key_identifier):
+
+    @staticmethod
+    def parse_results(result_set, extended_attributes, original_group, key_identifier):
         """
         description: parses through user_list from API calls, to create final user objects
         :type result_set: list(dict())
@@ -378,11 +380,12 @@ class ResultParser:
         users_dict = dict()
         for user in result_set:
             if user['status'] == 'active':
-                returned_user = self.create_user_object(user, extended_attributes, original_group, key_identifier)
+                returned_user = ResultParser.create_user_object(user, extended_attributes, original_group, key_identifier)
                 users_dict[user[key_identifier]] = returned_user
         return users_dict
 
-    def create_user_object(self, user, extended_attributes, original_group, key_identifier):
+    @staticmethod
+    def create_user_object(user, extended_attributes, original_group, key_identifier):
         """
         description: Using user's API information to construct final user objects
         :type user: dict()
