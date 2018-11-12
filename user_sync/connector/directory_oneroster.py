@@ -18,22 +18,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import requests
 import json
+import requests
 import six
-import string
-
+from oauthlib.oauth2 import BackendApplicationClient
+from requests.auth import HTTPBasicAuth
 from requests_oauthlib import OAuth1Session
 from requests_oauthlib import OAuth2Session
-from requests.auth import HTTPBasicAuth
-from oauthlib.oauth2 import BackendApplicationClient
-
 
 import user_sync.config
 import user_sync.connector.helper
 import user_sync.helper
 import user_sync.identity_type
-from user_sync.error import AssertionException
 
 
 def connector_metadata():
@@ -78,14 +74,14 @@ class OneRosterConnector(object):
         self.options = builder.get_options()
         self.host = builder.require_string_value('host')
         self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
-        self.client_secret = builder.require_string_value('client_secret')
-        self.client_id = builder.require_string_value('client_id')
+        # self.client_secret = builder.require_string_value('client_secret')
+        # self.client_id = builder.require_string_value('client_id')
         self.key_identifier = builder.require_string_value('key_identifier')
         self.country_code = builder.require_string_value('country_code')
         self.auth_specs = builder.require_value('authentication_type', type({}))
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
-        self.apiconnector= self.load_connector(self.auth_specs)
+        self.apiconnector = self.load_connector(self.auth_specs)
 
         caller_config.report_unused_values(self.logger)
 
@@ -162,33 +158,29 @@ class OneRosterConnector(object):
         """
 
         if auth_specs['auth_type'] == 'oauth2':
-            type = OAuthConnector2(self.client_id, self.client_secret, auth_specs['basic_header'], self.api_token_endpoint)
-
+            return OAuthConnector2(auth_specs, self.api_token_endpoint)
         elif auth_specs['auth_type'] == 'oauth2_non_lib':
-            type = OAuthConnector2_NON_LIB(self.client_id, self.client_secret, self.api_token_endpoint)
-
+            return OAuthConnector2_NON_LIB(auth_specs, self.api_token_endpoint)
+        elif auth_specs['auth_type'] == 'oauth':
+            return OAuthConnector1(auth_specs, self.api_token_endpoint)
         else:
-            type = OAuthConnector1(self.client_id, self.client_secret, self.api_token_endpoint)
-
-        if type is None:
             raise TypeError("Unrecognized authentication type: " + auth_specs['auth_type'])
-        return type
 
 
 class OAuthConnector2_NON_LIB:
 
-    def __init__(self, client_id=None, client_secret=None, token_endpoint=None):
-        self.client_id = client_id
-        self.client_secret = client_secret
+    def __init__(self, auth_specs, token_endpoint=None):
+        self.auth_specs =auth_specs
         self.token_endpoint = token_endpoint
         self.req_headers = dict()
 
     def authenticate(self):
         payload = dict()
-        header = dict()
         payload['grant_type'] = 'client_credentials'
 
-        response = requests.post(self.token_endpoint, auth=(self.client_id, self.client_secret), headers=header, data=payload)
+        response = requests.post(self.token_endpoint,
+                                 auth=(self.auth_specs['client_id'],
+                                       self.auth_specs['client_secret']), data=payload)
 
         if response.status_code != 200:
             raise ValueError('Token request failed:  ' + response.text)
@@ -205,48 +197,40 @@ class OAuthConnector2:
     """
 
     #def __init__(self, client_id=None, client_secret=None, basic_header=False, token_endpoint=None):
-    def __init__(self, client_id=None, client_secret=None, basic_header=None, token_endpoint=None):
-        self.client_id = client_id
-        self.client_secret = client_secret
+    def __init__(self, auth_specs, basic_header=False, token_endpoint=None):
+        self.auth_specs = auth_specs
         self.basic_header = basic_header
         self.token_endpoint = token_endpoint
         self.token = str()
 
     def authenticate(self):
-        payload = dict()
-        header = dict()
 
-        client = BackendApplicationClient(client_id=self.client_id)
+        client = BackendApplicationClient(client_id=self.auth_specs['client_id'])
         oauth = OAuth2Session(client=client)
 
         if self.basic_header is True:
-            auth = HTTPBasicAuth(self.client_id, self.client_secret)
+            auth = HTTPBasicAuth(self.auth_specs['client_id'], self.auth_specs['client_secret'])
             self.token = oauth.fetch_token(self.token_endpoint, auth=auth)
 
         else:
-            self.token = oauth.fetch_token(token_url=self.token_endpoint, client_id=self.client_id,
-                                       client_secret=self.client_secret)
+            self.token = oauth.fetch_token(token_url=self.token_endpoint, client_id=self.auth_specs['client_id'],
+                                       client_secret=self.auth_specs['client_secret'])
 
     def get(self, url=None):
-        client = OAuth2Session(self.client_id, token=self.token)
-
-        return client.get(url, token=self.token)
+        return OAuth2Session(self.auth_specs['client_id'], token=self.token).get(url, token=self.token)
 
 
 class OAuthConnector1:
 
-    def __init__(self, client_id=None, client_secret=None, host_name_oauth1=None):
-        self.client_id = client_id
-        self.client_secret = client_secret
+    def __init__(self, auth_specs, host_name_oauth1=None):
+        self.auth_specs = auth_specs
         self.host_name_oauth1 = host_name_oauth1
         self.req_headers = dict()
 
     def authenticate(self):
-        payload = dict()
-        header = dict()
         host = self.host_name_oauth1
-        key = self.client_id
-        secret = self.client_secret
+        key = self.auth_specs['client_id']
+        secret = self.auth_specs['client_secret']
         oauth = OAuth1Session(key, secret)
         fetch_response = oauth.fetch_request_token(host + 'oauth/request_token')
         resource_owner_key = fetch_response.get('oauth_token')

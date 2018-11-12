@@ -14,11 +14,6 @@
 # Host name for organization's OneRoster implementation, eg: https://mockroster.io
 host: "https://mockroster.io/"
 
-#User's credentials to access protected API endpoints
-client_id: 'oruser'
-client_secret: 'secret'
-
-
 api_token_endpoint: "https://mockroster.io/oauth/token"
 
 # Unique key used throughout One-Roster (sourcedId is commonly used)
@@ -38,6 +33,10 @@ authentication_type:
     #auth_type: 'oauth1'
 
     auth_type: 'oauth2_non_lib'
+
+    #User's credentials to access protected API endpoints
+    client_id: 'oruser'
+    client_secret: 'secret'
 
 
 
