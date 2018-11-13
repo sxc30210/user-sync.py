@@ -206,9 +206,13 @@ directory_users:
       adobe_groups:
         - "Mock Roster Test --Mike"
 
-#    - directory_group: "courses::Alg-102::students"
-#      adobe_groups:
-#        - "Mock Roster Test --Mike"
+    - directory_group: "classes::Art I - Fallx::teachers"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
+    - directory_group: "courses::Alg-102::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
 ##
 #    - directory_group: "classes::Algebra II - Fall::students"
 #      adobe_groups:

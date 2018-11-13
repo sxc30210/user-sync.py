@@ -94,25 +94,39 @@ class OneRosterConnector(object):
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-        conn = Connection(self.host, self.apiconnector)
+        conn = Connection(self.logger, self.host, self.apiconnector)
         groups_from_yml = self.parse_yml_groups(groups)
-        users_result = dict()
-
+        users_result = {}
 
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
-            original_group = inner_dict['original_group']
-            del inner_dict['original_group']
+            # original_group = inner_dict['original_group']
+            # del inner_dict['original_group']
             for group_name in inner_dict:
-                user_filter = inner_dict[group_name]
-                users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier)
-                users_result.update(ResultParser.parse_results(users_list, extended_attributes, original_group, self.key_identifier))
+                for user_group in inner_dict[group_name]:
+                    user_filter = inner_dict[group_name][user_group]
+                    users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier)
+                    api_response = ResultParser.parse_results(users_list, extended_attributes, self.key_identifier)
+                    users_result = self.merge_users(users_result, api_response, user_group)
+
+              #  users_result.update(ResultParser.parse_results(users_list, extended_attributes, original_group, self.key_identifier))
 
         for first_dict in users_result:
             values = users_result[first_dict]
             self.convert_user(values)
 
         return six.itervalues(users_result)
+
+    def merge_users(self, user_list, new_users, group_name):
+
+        for uid in new_users:
+            if uid not in user_list:
+                user_list[uid] = new_users[uid]
+
+            (user_list[uid]['groups']).add(group_name)
+
+        return user_list
+
 
     def convert_user(self, user_record):
         """ description: Adds country code and identity_type from yml files to User Record """
@@ -140,13 +154,20 @@ class OneRosterConnector(object):
             if user_filter not in ['students', 'teachers', 'users']:
                 raise ValueError("Incorrect user_filter: " + user_filter + " .... must be either: students, teachers, or users")
 
-            group_name = re.sub(r'(\s)','',group_name)
-            if group_filter in full_dict:
-                full_dict[group_filter][group_name] = user_filter
-                full_dict[group_filter]['original_group'] = text
-            else:
-                full_dict[group_filter] = {group_name: user_filter}
-                full_dict[group_filter]['original_group'] = text
+            if group_filter not in full_dict:
+                full_dict[group_filter] = {group_name: dict()}
+            elif group_name not in full_dict[group_filter]:
+                full_dict[group_filter][group_name] = dict()
+
+            full_dict[group_filter][group_name].update({text: user_filter})
+
+
+            # if group_filter in full_dict:
+            #     full_dict[group_filter][group_name] = user_filter
+            #     full_dict[group_filter]['original_group'] = text
+            # else:
+            #     full_dict[group_filter] = {group_name: user_filter}
+            #     full_dict[group_filter]['original_group'] = text
 
         return full_dict
 
@@ -259,9 +280,10 @@ class OAuthConnector1:
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""
 
-    def __init__(self, host_name=None, connector=None):
+    def __init__(self, logger, host_name=None, connector=None):
         self.host_name = host_name
         self.connector = connector
+        self.logger = logger
         self.connector.authenticate()
 
 
@@ -281,22 +303,27 @@ class Connection:
             for each_class in class_list:
                 key_id = class_list[each_class]
                 response = self.connector.get(self.host_name + 'classes' + '/' + key_id + '/' + user_filter)
-
                 if response.ok is False:
-                    raise ValueError('No ' + user_filter + ' Found for:' + " " + group_name + "\nError Response Message:" + " " +
-                                     response.text)
-                parsed_response = json.loads(response.content)
-                parsed_json_list.extend(parsed_response)
+                    self.logger.warning(
+                        'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
+                        response.text)
+                    return {}
+                parsed_json_list.extend(json.loads(response.content))
+                return  parsed_json_list
 
         else:
-            key_id = self.get_key_identifier(group_filter, group_name, key_identifier)
-            response = self.connector.get(self.host_name + group_filter + '/' + key_id + '/' + user_filter)
-            if response.ok is False:
-                raise ValueError('No ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
-                                 response.text)
-            parsed_json_list = json.loads(response.content)
-
-        return parsed_json_list
+            try:
+                key_id = self.get_key_identifier(group_filter, group_name, key_identifier)
+                response = self.connector.get(self.host_name + group_filter + '/' + key_id + '/' + user_filter)
+                if response.ok is False:
+                    self.logger.warning(
+                        'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
+                        response.text)
+                    return {}
+                return json.loads(response.content)
+            except ValueError as e:
+                self.logger.warning(e)
+                return {}
 
     def get_key_identifier(self, group_filter, group_name, key_identifier):
         """
@@ -323,18 +350,20 @@ class Connection:
         else:
             esless = 'name'
         for x in parsed_json:
-            if re.sub(r'(\s)','',x[esless]).lower() == group_name:
+            if self.encode_str(x[esless]) == self.encode_str(group_name):
                 try:
                     key_id = x[key_identifier]
                 except:
                     raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
                 why.append(key_id)
                 break
-        if why.__len__() != 1:
-            raise ValueError('No Key Ids Found for:' + " " + group_filter + ":" + " " + group_name)
+        if len(why) == 0:
+            raise ValueError('No key ids found for:' + " " + group_filter + ":" + " " + group_name)
+        elif len(why) > 1:
+            raise ValueError('Duplicate ID found:' + " " + group_filter + ":" + " " + group_name)
 
-        return_value = why[0]
-        return return_value
+        return why[0]
+
 
     def get_classlist_for_course(self, group_name, key_identifier):
         """
@@ -344,31 +373,37 @@ class Connection:
         :rtype class_list: list(str)
         """
 
+
         class_list = dict()
+        try:
+            key_id = self.get_key_identifier('courses', group_name, key_identifier)
+            response = self.connector.get(self.host_name + 'courses' + '/' + key_id + '/' + 'classes')
 
-        key_id = self.get_key_identifier('courses', group_name, key_identifier)
-        response = self.connector.get(self.host_name + 'courses' + '/' + key_id + '/' + 'classes')
+            if response.ok is not True:
+                status = response.status_code
+                message = response.reason
+                raise ValueError('Non Successful Response'
+                                 + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
+            parsed_json = json.loads(response.content)
 
-        if response.ok is not True:
-            status = response.status_code
-            message = response.reason
-            raise ValueError('Non Successful Response'
-                             + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
-        parsed_json = json.loads(response.content)
+            for each_class in parsed_json:
+                class_key_id = each_class[key_identifier]
+                class_name = each_class['classCode']
+                class_list[class_name] = class_key_id
 
-        for each_class in parsed_json:
-            class_key_id = each_class[key_identifier]
-            class_name = each_class['classCode']
-            class_list[class_name] = class_key_id
+        except ValueError as e:
+            self.logger.warning(e)
 
         return class_list
 
+    def encode_str(self, text):
+        return re.sub(r'(\s)', '', text).lower()
 
 class ResultParser:
 
 
     @staticmethod
-    def parse_results(result_set, extended_attributes, original_group, key_identifier):
+    def parse_results(result_set, extended_attributes, key_identifier):
         """
         description: parses through user_list from API calls, to create final user objects
         :type result_set: list(dict())
@@ -380,12 +415,12 @@ class ResultParser:
         users_dict = dict()
         for user in result_set:
             if user['status'] == 'active':
-                returned_user = ResultParser.create_user_object(user, extended_attributes, original_group, key_identifier)
+                returned_user = ResultParser.create_user_object(user, extended_attributes, key_identifier)
                 users_dict[user[key_identifier]] = returned_user
         return users_dict
 
     @staticmethod
-    def create_user_object(user, extended_attributes, original_group, key_identifier):
+    def create_user_object(user, extended_attributes, key_identifier):
         """
         description: Using user's API information to construct final user objects
         :type user: dict()
@@ -396,20 +431,16 @@ class ResultParser:
         """
         formatted_user = dict()
         source_attributes = dict()
-        groups = list()
+        #groups = set()
         # member_groups = list() #May not need
-        groups.append(original_group)
-
-        x, user_domain = str(user['email']).split('@')
+        #groups.add(original_group)
 
         #       User information available from One-Roster
-        source_attributes['email'] = formatted_user['email'] = user['email']
-        formatted_user['username'] = formatted_user['email']
+        source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = user['email']
         source_attributes['username'] = user['username']
         source_attributes['givenName'] = formatted_user['firstname'] = user['givenName']
         source_attributes['familyName'] = formatted_user['lastname'] = user['familyName']
-        source_attributes['domain'] = formatted_user['domain'] = user_domain
-        formatted_user['groups'] = groups
+        source_attributes['domain'] = formatted_user['domain'] = str(user['email']).split('@')[1]
         source_attributes['enabledUser'] = user['enabledUser']
         source_attributes['grades'] = user['grades']
         source_attributes['identifier'] = user['identifier']
@@ -432,6 +463,7 @@ class ResultParser:
                 formatted_user[attribute] = user[attribute]
 
         formatted_user['source_attributes'] = source_attributes
+        formatted_user['groups'] = set()
 
         return formatted_user
 
