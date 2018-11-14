@@ -22,6 +22,7 @@ import json
 import requests
 import six
 import re
+import string
 from oauthlib.oauth2 import BackendApplicationClient
 from requests.auth import HTTPBasicAuth
 from requests_oauthlib import OAuth1Session
@@ -31,6 +32,7 @@ import user_sync.config
 import user_sync.connector.helper
 import user_sync.helper
 import user_sync.identity_type
+from user_sync.error import AssertionException
 
 
 def connector_metadata():
@@ -84,7 +86,21 @@ class OneRosterConnector(object):
         self.logger = user_sync.connector.helper.create_logger(self.options)
         self.apiconnector = self.load_connector(self.auth_specs)
 
+        options = builder.get_options()
+        self.options = options
+        self.logger = logger = user_sync.connector.helper.create_logger(options)
+        logger.debug('%s initialized with options: %s', self.name, options)
         caller_config.report_unused_values(self.logger)
+
+        # LDAPValueFormatter.encoding = options['string_encoding']
+        # self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
+        # self.user_identity_type_formatter = LDAPValueFormatter(options['user_identity_type_format'])
+        # self.user_email_formatter = LDAPValueFormatter(options['user_email_format'])
+        # self.user_username_formatter = LDAPValueFormatter(options['user_username_format'])
+        # self.user_domain_formatter = LDAPValueFormatter(options['user_domain_format'])
+        # self.user_given_name_formatter = LDAPValueFormatter(options['user_given_name_format'])
+        # self.user_surname_formatter = LDAPValueFormatter(options['user_surname_format'])
+        # self.user_country_code_formatter = LDAPValueFormatter(options['user_country_code_format'])
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
@@ -160,14 +176,6 @@ class OneRosterConnector(object):
                 full_dict[group_filter][group_name] = dict()
 
             full_dict[group_filter][group_name].update({text: user_filter})
-
-
-            # if group_filter in full_dict:
-            #     full_dict[group_filter][group_name] = user_filter
-            #     full_dict[group_filter]['original_group'] = text
-            # else:
-            #     full_dict[group_filter] = {group_name: user_filter}
-            #     full_dict[group_filter]['original_group'] = text
 
         return full_dict
 
@@ -358,9 +366,9 @@ class Connection:
                 why.append(key_id)
                 break
         if len(why) == 0:
-            raise ValueError('No key ids found for:' + " " + group_filter + ":" + " " + group_name)
+            raise ValueError('No key ids found for: ' + " " + group_filter + ":" + " " + group_name)
         elif len(why) > 1:
-            raise ValueError('Duplicate ID found:' + " " + group_filter + ":" + " " + group_name)
+            raise ValueError('Duplicate ID found: ' + " " + group_filter + ":" + " " + group_name)
 
         return why[0]
 
@@ -468,3 +476,62 @@ class ResultParser:
         return formatted_user
 
 
+class LDAPValueFormatter(object):
+    encoding = 'utf8'
+
+    def __init__(self, string_format):
+        """
+        The format string must be a unicode or ascii string: see notes above about being careful in Py2!
+        """
+        if string_format is None:
+            attribute_names = []
+        else:
+            string_format = six.text_type(string_format)    # force unicode so attribute values are unicode
+            formatter = string.Formatter()
+            attribute_names = [six.text_type(item[1]) for item in formatter.parse(string_format) if item[1]]
+        self.string_format = string_format
+        self.attribute_names = attribute_names
+
+    def get_attribute_names(self):
+        """
+        :rtype list(str)
+        """
+        return self.attribute_names
+
+    def generate_value(self, record):
+        """
+        :type record: dict
+        :rtype (unicode, unicode)
+        """
+        result = None
+        attribute_name = None
+        if self.string_format is not None:
+            values = {}
+            for attribute_name in self.attribute_names:
+                value = self.get_attribute_value(record, attribute_name, first_only=True)
+                if value is None:
+                    values = None
+                    break
+                values[attribute_name] = value
+            if values is not None:
+                result = self.string_format.format(**values)
+        return result, attribute_name
+
+    @classmethod
+    def get_attribute_value(cls, attributes, attribute_name, first_only=False):
+        """
+        The attribute value type must be decodable (str in py2, bytes in py3)
+        :type attributes: dict
+        :type attribute_name: unicode
+        :type first_only: bool
+        """
+        attribute_values = attributes.get(attribute_name)
+        if attribute_values:
+            try:
+                if first_only or len(attribute_values) == 1:
+                    return attribute_values[0].decode(cls.encoding)
+                else:
+                    return [val.decode(cls.encoding) for val in attribute_values]
+            except UnicodeError as e:
+                raise AssertionException("Encoding error in value of attribute '%s': %s" % (attribute_name, e))
+        return None

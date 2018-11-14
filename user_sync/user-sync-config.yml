@@ -206,7 +206,7 @@ directory_users:
       adobe_groups:
         - "Mock Roster Test --Mike"
 
-    - directory_group: "classes::Art I - Fallx::teachers"
+    - directory_group: "classes::Art I - Fall::teachers"
       adobe_groups:
         - "Mock Roster Test --Mike"
 
