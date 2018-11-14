@@ -72,13 +72,13 @@ class OneRosterConnector(object):
         builder = user_sync.config.OptionsBuilder(caller_config)
         builder.set_string_value('user_identity_type', None)
         builder.set_string_value('logger_name', self.name)
+        builder.set_string_value('string_encoding', 'utf8')
 
         # Values from connector-oneroster.yml via builder
+
         self.options = builder.get_options()
         self.host = builder.require_string_value('host')
         self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
-        # self.client_secret = builder.require_string_value('client_secret')
-        # self.client_id = builder.require_string_value('client_id')
         self.key_identifier = builder.require_string_value('key_identifier')
         self.country_code = builder.require_string_value('country_code')
         self.auth_specs = builder.require_value('authentication_type', type({}))
