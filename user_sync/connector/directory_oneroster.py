@@ -80,6 +80,7 @@ class OneRosterConnector(object):
         self.host = builder.require_string_value('host')
         self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
         self.key_identifier = builder.require_string_value('key_identifier')
+        self.limit = builder.require_string_value('limit')
         self.country_code = builder.require_string_value('country_code')
         self.auth_specs = builder.require_value('authentication_type', type({}))
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
@@ -110,22 +111,18 @@ class OneRosterConnector(object):
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-        conn = Connection(self.logger, self.host, self.apiconnector)
+        conn = Connection(self.logger, self.host, self.apiconnector, self.limit)
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = {}
 
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
-            # original_group = inner_dict['original_group']
-            # del inner_dict['original_group']
             for group_name in inner_dict:
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
-                    users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier)
+                    users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier, self.limit)
                     api_response = ResultParser.parse_results(users_list, extended_attributes, self.key_identifier)
                     users_result = self.merge_users(users_result, api_response, user_group)
-
-              #  users_result.update(ResultParser.parse_results(users_list, extended_attributes, original_group, self.key_identifier))
 
         for first_dict in users_result:
             values = users_result[first_dict]
@@ -288,83 +285,129 @@ class OAuthConnector1:
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""
 
-    def __init__(self, logger, host_name=None, connector=None):
+    def __init__(self, logger, host_name=None, connector=None, limit='100'):
         self.host_name = host_name
         self.connector = connector
         self.logger = logger
         self.connector.authenticate()
+        self.limit = limit
 
 
-    def get_user_list(self, group_filter, group_name, user_filter, key_identifier):
+    def get_user_list(self, group_filter, group_name, user_filter, key_identifier, limit):
         """
         description:
         :type group_filter: str()
         :type group_name: str()
         :type user_filter: str()
         :type key_identifier: str()
+        :type limit: str()
         :rtype parsed_json_list: list(str)
         """
         parsed_json_list = list()
-
         if group_filter == 'courses':
-            class_list = self.get_classlist_for_course(group_name, key_identifier)
+            class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
             for each_class in class_list:
-                key_id = class_list[each_class]
-                response = self.connector.get(self.host_name + 'classes' + '/' + key_id + '/' + user_filter)
-                if response.ok is False:
+                key_id_classes = class_list[each_class]
+                response_classes = self.connector.get(self.host_name + 'classes' + '/' + key_id_classes + '/' + user_filter + '?limit=' + limit + '&offset=0')
+                if response_classes.ok is False:
                     self.logger.warning(
                         'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
-                        response.text)
+                        response_classes.text)
                     return {}
-                parsed_json_list.extend(json.loads(response.content))
-                return  parsed_json_list
+                parsed_json_list = json.loads(response_classes.content)
+                while self.is_last_call_to_make(response_classes) is False:
+                    response_classes = self.connector.get(response_classes.headers._store['next'][1])
+                    if response_classes.ok is not True:
+                        break
+                    parsed_json_list.extend(json.loads(response_classes.content))
+
 
         else:
             try:
-                key_id = self.get_key_identifier(group_filter, group_name, key_identifier)
-                response = self.connector.get(self.host_name + group_filter + '/' + key_id + '/' + user_filter)
+
+                key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
+                response = self.connector.get(self.host_name + group_filter + '/' + key_id + '/' + user_filter  + '?limit=' + limit + '&offset=0')
                 if response.ok is False:
                     self.logger.warning(
                         'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
                         response.text)
                     return {}
-                return json.loads(response.content)
+                parsed_json_list = json.loads(response.content)
+
+                while self.is_last_call_to_make(response) is False:
+                    response = self.connector.get(response.headers._store['next'][1])
+                    if response.ok is not True:
+                        break
+                    parsed_json_list.extend(json.loads(response.content))
+
             except ValueError as e:
                 self.logger.warning(e)
                 return {}
 
-    def get_key_identifier(self, group_filter, group_name, key_identifier):
+        return parsed_json_list
+    def is_last_call_to_make(self, response):
+        """
+        handles pagination
+        :type response: dict() response from url call
+        :rType: boolean:
+        """
+        try:
+            returned_result_count = response.headers._store['result-count'][1]
+            if returned_result_count < self.limit:
+                return True
+            else:
+                return False
+
+        except:
+            return True
+
+
+    def get_key_identifier(self, group_filter, group_name, key_identifier, limit):
         """
         description: Returns key_identifier (eg: sourcedID) for targeted group_name from One-Roster
         :type group_filter: str()
         :type group_name: str()
         :type key_identifier: str()
+        :type limit: str()
         :rtype sourced_id: str()
         """
         why = list()
-
-        response = self.connector.get(self.host_name + group_filter)
-
-        if response.ok is not True:
-            raise ValueError('Non Successful Response'
-                             + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
-
-        parsed_json = json.loads(response.content)
-
         if group_filter == 'courses':
             esless = group_filter[:-1] + "Code"
         elif group_filter == 'classes':
             esless = group_filter[:-2] + "Code"
         else:
             esless = 'name'
-        for x in parsed_json:
-            if self.encode_str(x[esless]) == self.encode_str(group_name):
-                try:
-                    key_id = x[key_identifier]
-                except:
-                    raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
-                why.append(key_id)
-                break
+
+        response = self.connector.get(self.host_name + group_filter + '?limit=' + limit + '&offset=0')
+
+        if response.ok is not True:
+            raise ValueError('Non Successful Response'
+                             + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
+        parsed_json = json.loads(response.content)
+        if self.is_last_call_to_make(response) is True:
+            for x in parsed_json:
+                if self.encode_str(x[esless]) == self.encode_str(group_name):
+                    try:
+                        key_id = x[key_identifier]
+                    except:
+                        raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+                    why.append(key_id)
+                    break
+        while self.is_last_call_to_make(response) is False:
+            #parsed_json.extend(json.loads(response.content))
+            parsed_json = json.loads(response.content)
+            for x in parsed_json:
+            # for x in json.loads(response.content):
+                if self.encode_str(x[esless]) == self.encode_str(group_name):
+                    try:
+                        key_id = x[key_identifier]
+                        why.append(key_id)
+                        return why[0]
+                    except:
+                        raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+
+            response = self.connector.get(response.headers._store['next'][1])
         if len(why) == 0:
             raise ValueError('No key ids found for: ' + " " + group_filter + ":" + " " + group_name)
         elif len(why) > 1:
@@ -373,19 +416,20 @@ class Connection:
         return why[0]
 
 
-    def get_classlist_for_course(self, group_name, key_identifier):
+    def get_classlist_for_course(self, group_name, key_identifier, limit):
         """
         description: returns list of sourceIds for classes of a course (group_name)
         :type group_name: str()
         :type key_identifier: str()
+        :type limit: str()
         :rtype class_list: list(str)
         """
 
-
+        parsed_json = list()
         class_list = dict()
         try:
-            key_id = self.get_key_identifier('courses', group_name, key_identifier)
-            response = self.connector.get(self.host_name + 'courses' + '/' + key_id + '/' + 'classes')
+            key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
+            response = self.connector.get(self.host_name + 'courses' + '/' + key_id + '/' + 'classes' + '?limit=' + limit + '&offset=0')
 
             if response.ok is not True:
                 status = response.status_code
@@ -393,6 +437,12 @@ class Connection:
                 raise ValueError('Non Successful Response'
                                  + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
             parsed_json = json.loads(response.content)
+
+            while self.is_last_call_to_make(response) is False:
+                response = self.connector.get(response.headers._store['next'][1])
+                if response.ok is not True:
+                    break
+                parsed_json.extend(json.loads(response.content))
 
             for each_class in parsed_json:
                 class_key_id = each_class[key_identifier]

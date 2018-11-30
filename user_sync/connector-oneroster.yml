@@ -39,6 +39,59 @@ authentication_type:
     client_secret: 'secret'
 
 
+#Pagination (required according to One Roster final specification)
+#must be supported for ALL endpoints that return a collection
+#Limit, number of results to return during each query, Implementations of One Roster default at 100
+limit: '100'
+
+
+#Official excerpt from One Roster
+#It is expected that Student Information Systems may well contain massive amounts of data,
+#and as such there is a real danger of data overload if entire collections are requested.
+#To avoid this, implementations MUST adopt a pagination mechanism.
+#
+#Pagination is controlled via two parameters that are appended to the request.
+#
+#•         Limit - the number of results to return
+#
+#•         Offset - the index of the first record to return. (zero indexed)
+#
+#The default value for limit MUST be 100.
+#
+#The default value for offset MUST be 0.
+#
+#Example: return the first 10 resources in a collection of students:
+#
+#GET https://imsglobal.org/ims/oneroster/v1p1/students?limit=10
+#
+#Example: return the second 10 resources in a collection of students:
+#
+#GET https://imsglobal.org/ims/oneroster/v1p1/students?limit=10&offset=10
+#
+#It is RECOMMENDED that implementations pass the total resource count in collection back to the requester.
+#This MUST be provided in the custom HTTP header: X-Total-Count.
+#
+#It is RECOMMENDED that implementers pass back next, previous, first and last links in the HTTP Link Header.
+#
+#Example: 503 student resources exist in the collection. Pagination is on the second page, in units of 10.
+#
+#Link:
+#
+#<https://imsglobal.org/ims/oneroster/v1p1/students?limit=10&offset=20>; rel="next",
+#
+#<https://imsglobal.org/ims/oneroster/v1p1/students?limit=3&offset=500>; rel="last",
+#
+#<https://imsglobal.org/ims/oneroster/v1p1/students?limit=10&offset=0>; rel="first",
+#
+#<https://imsglobal.org/ims/oneroster/v1p1/students?limit=10&offset=0>; rel="prev"
+#
+#NOTE: Pagination must be supported for ALL endpoints that return a collection.
+
+
+
+
+
+
 
 
 #(optional) Additional One Roster User information (source_attributes), that can be used to create final user object.
