@@ -77,13 +77,13 @@ class OneRosterConnector(object):
         self.host = builder.require_string_value('host')
         self.key_identifier = builder.require_string_value('key_identifier')
         self.limit = builder.require_string_value('limit')
+        if int(self.limit) < 1:
+            raise ValueError("limit must be >= 1")
         self.country_code = builder.require_string_value('country_code')
         self.client_id = builder.require_string_value('client_id')
         self.client_secret = builder.require_string_value('client_secret')
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
-        self.oneroster = OneRoster(self.client_id, self.client_secret)
-
         options = builder.get_options()
         self.options = options
         self.logger = logger = user_sync.connector.helper.create_logger(options)
@@ -165,7 +165,7 @@ class OneRosterConnector(object):
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""
 
-    def __init__(self, logger, host_name=None, limit='100', client_id=None, client_secret=None, oneroster=None):
+    def __init__(self, logger, host_name=None, limit='100', client_id=None, client_secret=None):
         self.host_name = host_name
         self.logger = logger
         self.limit = limit
@@ -236,15 +236,20 @@ class Connection:
         :type response: dict() response from url call
         :rType: boolean:
         """
-        try:
-            returned_result_count = response.headers._store['x-count'][1]
-            if int(returned_result_count) < int(self.limit):
-                return True
-            else:
-                return False
 
+        try:
+            if response.links['next']['url'] is not None:
+                return False
         except:
             return True
+
+        returned_result_count = response.headers._store['x-count'][1]
+        if int(returned_result_count) < int(self.limit):
+            return True
+        else:
+            return False
+
+
 
     def get_key_identifier(self, group_filter, group_name, key_identifier, limit):
         """
@@ -256,12 +261,13 @@ class Connection:
         :rtype sourced_id: str()
         """
         keys = list()
-        if group_filter == 'courses':
-            esless = group_filter[:-1] + "Code"
-        elif group_filter == 'classes':
-            esless = group_filter[:-2] + "Code"
-        else:
-            esless = 'name'
+        # Not used if using name and title
+        # if group_filter == 'courses':
+        #     esless = group_filter[:-1] + "Code"
+        # elif group_filter == 'classes':
+        #     esless = group_filter[:-2] + "Code"
+        # else:
+        #     esless = 'name'
 
         response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit + '&offset=0')
 
@@ -276,22 +282,27 @@ class Connection:
             else:
                 name_identifier = 'title'
                 revised_key = group_filter
-
-            for each_class in parsed_json.get(revised_key):
-                if self.encode_str(each_class[name_identifier]) == self.encode_str(group_name):
-                    try:
-                        key_id = each_class[key_identifier]
-                    except:
-                        raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
-                    keys.append(key_id)
-                    break
+            try:
+                for each_class in parsed_json.get(revised_key):
+                    if self.encode_str(each_class[name_identifier]) == self.encode_str(group_name):
+                        try:
+                            key_id = each_class[key_identifier]
+                        except:
+                            raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+                        keys.append(key_id)
+                        break
+            except:
+                raise AssertionException("response list key mismatch" + "for" + revised_key)
         while self.is_last_call_to_make(response) is False:
-            #parsed_json.extend(json.loads(response.content))
+            if group_filter == 'schools':
+                name_identifier = 'name'
+                revised_key = 'orgs'
+            else:
+                name_identifier = 'title'
+                revised_key = group_filter
             parsed_json = json.loads(response.content)
-            #value = parsed_json.get(group_filter)
-            for each in parsed_json.get(group_filter):
-                #if self.encode_str(x[esless]) == self.encode_str(group_name):
-                if self.encode_str(each['title']) == self.encode_str(group_name):
+            for each in parsed_json.get(revised_key):
+                if self.encode_str(each[name_identifier]) == self.encode_str(group_name):
                     try:
                         key_id = each[key_identifier]
                         keys.append(key_id)
@@ -299,14 +310,23 @@ class Connection:
                     except:
                         raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
 
-            response = self.oneroster.make_roster_request(response.headers._store['next'][1])
+            response = self.oneroster.make_roster_request(response.links['next']['url'])
+        parsed_json = json.loads(response.content)
+        for each in parsed_json.get(revised_key):
+            if self.encode_str(each[name_identifier]) == self.encode_str(group_name):
+                try:
+                    key_id = each[key_identifier]
+                    keys.append(key_id)
+                    return keys[0]
+                except:
+                    raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+
         if len(keys) == 0:
             raise ValueError('No key ids found for: ' + " " + group_filter + ":" + " " + group_name)
         elif len(keys) > 1:
             raise ValueError('Duplicate ID found: ' + " " + group_filter + ":" + " " + group_name)
 
         return keys[0]
-
 
     def get_classlist_for_course(self, group_name, key_identifier, limit):
         """
@@ -317,7 +337,6 @@ class Connection:
         :rtype class_list: list(str)
         """
 
-        #parsed_json = list()
         class_list = dict()
         try:
             key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
@@ -383,30 +402,34 @@ class ResultParser:
         formatted_user = dict()
         source_attributes = dict()
 
-#       User information available from One-Roster
-        source_attributes['sourcedId'] = user['sourcedId']
-        source_attributes['status'] = user['status']
-        source_attributes['dateLastModified'] = user['dateLastModified']
-        source_attributes['username'] = user['username']
-        source_attributes['userIds'] = user['userIds']
-        source_attributes['enabledUser'] = user['enabledUser']
-        source_attributes['givenName'] = formatted_user['firstname'] = user['givenName']
-        source_attributes['familyName'] = formatted_user['lastname'] = user['familyName']
-        source_attributes['middleName'] = user['middleName']
-        source_attributes['role'] = user['role']
-        source_attributes['identifier'] = user['identifier']
-        source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = user['email']
-        source_attributes['sms'] = user['sms']
-        source_attributes['phone'] = user['phone']
-        source_attributes['agents'] = user['agents']
-        source_attributes['orgs'] = user['orgs']
-        source_attributes['grades'] = user['grades']
-        source_attributes['domain'] = formatted_user['domain'] = str(user['email']).split('@')[1]
-        source_attributes['password'] = user['password']
-        source_attributes[key_identifier] = user[key_identifier]
-        #Can be found in userIds if needed
-        #source_attributes['userId'] = user['userId']
-        #source_attributes['type'] = user['type']
+        #       User information available from One-Roster
+        try:
+            source_attributes['sourcedId'] = user['sourcedId']
+            source_attributes['status'] = user['status']
+            source_attributes['dateLastModified'] = user['dateLastModified']
+            source_attributes['username'] = user['username']
+            source_attributes['userIds'] = user['userIds']
+            source_attributes['enabledUser'] = user['enabledUser']
+            source_attributes['givenName'] = formatted_user['firstname'] = user['givenName']
+            source_attributes['familyName'] = formatted_user['lastname'] = user['familyName']
+            source_attributes['middleName'] = user['middleName']
+            source_attributes['role'] = user['role']
+            source_attributes['identifier'] = user['identifier']
+            source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = user['email']
+            source_attributes['sms'] = user['sms']
+            source_attributes['phone'] = user['phone']
+            source_attributes['agents'] = user['agents']
+            source_attributes['orgs'] = user['orgs']
+            source_attributes['grades'] = user['grades']
+            source_attributes['domain'] = formatted_user['domain'] = str(user['email']).split('@')[1]
+            source_attributes['password'] = user['password']
+            source_attributes[key_identifier] = user[key_identifier]
+            #Can be found in userIds if needed
+            #source_attributes['userId'] = user['userId']
+            #source_attributes['type'] = user['type']
+
+        except:
+            raise AssertionException("A key not found in user info object")
 
 #       adds any extended_attribute values
 #       from the one-roster user information into the final user object utilized by the UST
