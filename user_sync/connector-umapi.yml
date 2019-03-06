@@ -37,9 +37,9 @@ server:
 # if relative, it is interpreted relative to this configuration file.]
 enterprise:
   org_id: "D28927675A9581A20A49412A@AdobeOrg"
-  api_key: "30063bb75d2747faaaeaddaed6b36171"
-  client_secret: "87e70dc7-1d76-4eaf-9b73-75366cf18458"
-  tech_acct: "B7A639EA5B23D1D10A494022@techacct.adobe.com"
+  api_key: "eb82ec89fc5f40d98478bd6a649c5059"
+  client_secret: "38114a5c-e00d-4441-a56c-42fe311d4b7a"
+  tech_acct: "D4F21AAB5C7EAA6B0A494028@techacct.adobe.com"
   priv_key_path: "private.key"
 
   # (optional) As an alternative to priv_key_path, you can place the private key 

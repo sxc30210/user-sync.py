@@ -7,6 +7,7 @@ __pycache__/
 venv*
 
 
+
 # Distribution / packaging
 .Python
 env/
@@ -80,6 +81,7 @@ celerybeat-schedule
 .env
 
 # virtualenv
+
 venv/
 ENV/
 
@@ -96,3 +98,7 @@ ENV/
 _site
 .sass-cache
 .jekyll-metadata
+
+# Keys
+private.key
+certificate_pub.crt

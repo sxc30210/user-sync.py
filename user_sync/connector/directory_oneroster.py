@@ -34,6 +34,7 @@ import user_sync.helper
 import user_sync.identity_type
 from user_sync.error import AssertionException
 
+from user_sync.connector.oneroster import OneRoster
 
 def connector_metadata():
     metadata = {
@@ -78,14 +79,17 @@ class OneRosterConnector(object):
 
         self.options = builder.get_options()
         self.host = builder.require_string_value('host')
-        self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
+        #self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
         self.key_identifier = builder.require_string_value('key_identifier')
         self.limit = builder.require_string_value('limit')
         self.country_code = builder.require_string_value('country_code')
-        self.auth_specs = builder.require_value('authentication_type', type({}))
+        self.client_id = builder.require_string_value('client_id')
+        self.client_secret = builder.require_string_value('client_secret')
+        #self.auth_specs = builder.require_value('authentication_type', type({}))
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
-        self.apiconnector = self.load_connector(self.auth_specs)
+        #self.apiconnector = self.load_connector(self.auth_specs)
+        self.oneroster = OneRoster(self.client_id, self.client_secret)
 
         options = builder.get_options()
         self.options = options
@@ -111,7 +115,7 @@ class OneRosterConnector(object):
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-        conn = Connection(self.logger, self.host, self.apiconnector, self.limit)
+        conn = Connection(self.logger, self.host, self.limit, self.client_id, self.client_secret)
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = {}
 
@@ -176,122 +180,18 @@ class OneRosterConnector(object):
 
         return full_dict
 
-    def load_connector(self, auth_specs):
-        """
-        :description: Loads appropriate authentication protocol, using the Authentication specifications from connector-oneroster.yml.
-        :type auth_specs: dict()
-        :rtype: class(Proper Connector)
-        """
-
-        if auth_specs['auth_type'] == 'oauth2':
-            return OAuthConnector2(auth_specs, self.api_token_endpoint)
-        elif auth_specs['auth_type'] == 'oauth2_non_lib':
-            return OAuthConnector2_NON_LIB(auth_specs, self.api_token_endpoint)
-        elif auth_specs['auth_type'] == 'oauth':
-            return OAuthConnector1(auth_specs, self.api_token_endpoint)
-        else:
-            raise TypeError("Unrecognized authentication type: " + auth_specs['auth_type'])
-
-
-class OAuthConnector2_NON_LIB:
-
-    def __init__(self, auth_specs, token_endpoint=None):
-        self.auth_specs =auth_specs
-        self.token_endpoint = token_endpoint
-        self.req_headers = dict()
-
-    def authenticate(self):
-        payload = dict()
-        payload['grant_type'] = 'client_credentials'
-
-        response = requests.post(self.token_endpoint,
-                                 auth=(self.auth_specs['client_id'],
-                                       self.auth_specs['client_secret']), data=payload)
-
-        if response.status_code != 200:
-            raise ValueError('Token request failed:  ' + response.text)
-
-        self.req_headers['Authorization'] = "Bearer" + json.loads(response.content)['access_token']
-
-    def get(self, url=None):
-        return requests.get(url, headers=self.req_headers)
-
-class OAuthConnector2:
-
-    """
-    The OAuthLib provides multiple optional security measures when implementing OAuth2
-    """
-
-    #def __init__(self, client_id=None, client_secret=None, basic_header=False, token_endpoint=None):
-    def __init__(self, auth_specs, basic_header=False, token_endpoint=None):
-        self.auth_specs = auth_specs
-        self.basic_header = basic_header
-        self.token_endpoint = token_endpoint
-        self.token = str()
-
-    def authenticate(self):
-
-        client = BackendApplicationClient(client_id=self.auth_specs['client_id'])
-        oauth = OAuth2Session(client=client)
-
-        if self.basic_header is True:
-            auth = HTTPBasicAuth(self.auth_specs['client_id'], self.auth_specs['client_secret'])
-            self.token = oauth.fetch_token(self.token_endpoint, auth=auth)
-
-        else:
-            self.token = oauth.fetch_token(token_url=self.token_endpoint, client_id=self.auth_specs['client_id'],
-                                       client_secret=self.auth_specs['client_secret'])
-
-    def get(self, url=None):
-        return OAuth2Session(self.auth_specs['client_id'], token=self.token).get(url, token=self.token)
-
-
-class OAuthConnector1:
-
-    def __init__(self, auth_specs, host_name_oauth1=None):
-        self.auth_specs = auth_specs
-        self.host_name_oauth1 = host_name_oauth1
-        self.req_headers = dict()
-
-    def authenticate(self):
-        host = self.host_name_oauth1
-        key = self.auth_specs['client_id']
-        secret = self.auth_specs['client_secret']
-        oauth = OAuth1Session(key, secret)
-        fetch_response = oauth.fetch_request_token(host + 'oauth/request_token')
-        resource_owner_key = fetch_response.get('oauth_token')
-        resource_owner_secret = fetch_response.get('oauth_token_secret')
-
-        authorization_url = oauth.authorization_url(host + 'oauth/authorize')
-        print('Please go here and authorize,', authorization_url)
-        redirect_response = input('Paste the full redirect URL here: ')
-        oauth_response = oauth.parse_authorization_response(redirect_response)
-        verifier = oauth_response.get('oauth_verifier')
-
-        oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret, verifier)
-
-        oauth_tokens = oauth.fetch_access_token(host + 'oauth/access_token')
-
-        resource_owner_key = oauth_tokens.get('oauth_token')
-        resource_owner_secret = oauth_tokens.get('oauth_token_secret')
-
-        protected_url = 'https://api.twitter.com/1/account/settings.json'
-        oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret)
-        r = requests.get(protected_url, oauth)
-
-    def get(self, url=None):
-        return "users"
-
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""
 
-    def __init__(self, logger, host_name=None, connector=None, limit='100'):
+    def __init__(self, logger, host_name=None, limit='100', client_id=None, client_secret=None, oneroster=None):
         self.host_name = host_name
-        self.connector = connector
+        #self.connector = connector
         self.logger = logger
-        self.connector.authenticate()
+        #self.connector.authenticate()
         self.limit = limit
-
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.oneroster = OneRoster(client_id, client_secret)
 
     def get_user_list(self, group_filter, group_name, user_filter, key_identifier, limit):
         """
@@ -304,19 +204,23 @@ class Connection:
         :rtype parsed_json_list: list(str)
         """
         parsed_json_list = list()
+
+
+
         if group_filter == 'courses':
             class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
             for each_class in class_list:
                 key_id_classes = class_list[each_class]
-                response_classes = self.connector.get(self.host_name + 'classes' + '/' + key_id_classes + '/' + user_filter + '?limit=' + limit + '&offset=0')
+                response_classes = self.oneroster.make_roster_request(self.host_name + 'classes' + '/' + key_id_classes + '/' + user_filter + '?limit=' + limit + '&offset=0')
                 if response_classes.ok is False:
                     self.logger.warning(
                         'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
                         response_classes.text)
                     return {}
-                parsed_json_list = json.loads(response_classes.content)
+                for ignore3, users3 in json.loads(response_classes.content).items():
+                    parsed_json_list.extend(users3)
                 while self.is_last_call_to_make(response_classes) is False:
-                    response_classes = self.connector.get(response_classes.headers._store['next'][1])
+                    response_classes = self.oneroster.make_roster_request(response_classes.headers._store['next'][1])
                     if response_classes.ok is not True:
                         break
                     parsed_json_list.extend(json.loads(response_classes.content))
@@ -326,19 +230,24 @@ class Connection:
             try:
 
                 key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
-                response = self.connector.get(self.host_name + group_filter + '/' + key_id + '/' + user_filter  + '?limit=' + limit + '&offset=0')
+                response = self.oneroster.make_roster_request(self.host_name + group_filter + '/' + key_id + '/' + user_filter  + '?limit=' + limit + '&offset=0')
                 if response.ok is False:
                     self.logger.warning(
                         'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
                         response.text)
                     return {}
-                parsed_json_list = json.loads(response.content)
+
+                for ignore, users in json.loads(response.content).items():
+                    parsed_json_list.extend(users)
 
                 while self.is_last_call_to_make(response) is False:
-                    response = self.connector.get(response.headers._store['next'][1])
+                    # response = self.oneroster.make_roster_request(response.headers._store['next'][1])
+                    #xv = response.links['next']['url']
+                    response = self.oneroster.make_roster_request(response.links['next']['url'])
                     if response.ok is not True:
                         break
-                    parsed_json_list.extend(json.loads(response.content))
+                    for ignore2, users2 in json.loads(response.content).items():
+                        parsed_json_list.extend(users2)
 
             except ValueError as e:
                 self.logger.warning(e)
@@ -352,7 +261,7 @@ class Connection:
         :rType: boolean:
         """
         try:
-            returned_result_count = response.headers._store['result-count'][1]
+            returned_result_count = response.headers._store['x-count'][1]
             if returned_result_count < self.limit:
                 return True
             else:
@@ -371,7 +280,7 @@ class Connection:
         :type limit: str()
         :rtype sourced_id: str()
         """
-        why = list()
+        keys = list()
         if group_filter == 'courses':
             esless = group_filter[:-1] + "Code"
         elif group_filter == 'classes':
@@ -379,41 +288,43 @@ class Connection:
         else:
             esless = 'name'
 
-        response = self.connector.get(self.host_name + group_filter + '?limit=' + limit + '&offset=0')
+        response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit + '&offset=0')
 
-        if response.ok is not True:
+        if response.status_code is not 200:
             raise ValueError('Non Successful Response'
                              + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
         parsed_json = json.loads(response.content)
         if self.is_last_call_to_make(response) is True:
-            for x in parsed_json:
-                if self.encode_str(x[esless]) == self.encode_str(group_name):
+            for each_class in parsed_json:
+                if self.encode_str(each_class[esless]) == self.encode_str(group_name):
                     try:
-                        key_id = x[key_identifier]
+                        key_id = each_class[key_identifier]
                     except:
                         raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
-                    why.append(key_id)
+                    keys.append(key_id)
                     break
         while self.is_last_call_to_make(response) is False:
             #parsed_json.extend(json.loads(response.content))
             parsed_json = json.loads(response.content)
-            for x in parsed_json:
+            #value = parsed_json.get(group_filter)
+            for each in parsed_json.get(group_filter):
             # for x in json.loads(response.content):
-                if self.encode_str(x[esless]) == self.encode_str(group_name):
+                #if self.encode_str(x[esless]) == self.encode_str(group_name):
+                if self.encode_str(each['title']) == self.encode_str(group_name):
                     try:
-                        key_id = x[key_identifier]
-                        why.append(key_id)
-                        return why[0]
+                        key_id = each[key_identifier]
+                        keys.append(key_id)
+                        return keys[0]
                     except:
                         raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
 
-            response = self.connector.get(response.headers._store['next'][1])
-        if len(why) == 0:
+            response = self.oneroster.make_roster_request(response.headers._store['next'][1])
+        if len(keys) == 0:
             raise ValueError('No key ids found for: ' + " " + group_filter + ":" + " " + group_name)
-        elif len(why) > 1:
+        elif len(keys) > 1:
             raise ValueError('Duplicate ID found: ' + " " + group_filter + ":" + " " + group_name)
 
-        return why[0]
+        return keys[0]
 
 
     def get_classlist_for_course(self, group_name, key_identifier, limit):
@@ -429,7 +340,7 @@ class Connection:
         class_list = dict()
         try:
             key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
-            response = self.connector.get(self.host_name + 'courses' + '/' + key_id + '/' + 'classes' + '?limit=' + limit + '&offset=0')
+            response = self.oneroster.make_roster_request(self.host_name + 'courses' + '/' + key_id + '/' + 'classes' + '?limit=' + limit + '&offset=0')
 
             if response.ok is not True:
                 status = response.status_code
@@ -439,14 +350,15 @@ class Connection:
             parsed_json = json.loads(response.content)
 
             while self.is_last_call_to_make(response) is False:
-                response = self.connector.get(response.headers._store['next'][1])
+                response = self.oneroster.make_roster_request(response.headers._store['next'][1])
                 if response.ok is not True:
                     break
                 parsed_json.extend(json.loads(response.content))
 
-            for each_class in parsed_json:
-                class_key_id = each_class[key_identifier]
-                class_name = each_class['classCode']
+            for ignore, each_class in parsed_json.items():
+                class_key_id = each_class[0][key_identifier]
+                #class_name = each_class['classCode']
+                class_name = each_class[0]['title']
                 class_list[class_name] = class_key_id
 
         except ValueError as e:
@@ -457,8 +369,8 @@ class Connection:
     def encode_str(self, text):
         return re.sub(r'(\s)', '', text).lower()
 
-class ResultParser:
 
+class ResultParser:
 
     @staticmethod
     def parse_results(result_set, extended_attributes, key_identifier):
@@ -489,30 +401,31 @@ class ResultParser:
         """
         formatted_user = dict()
         source_attributes = dict()
-        #groups = set()
-        # member_groups = list() #May not need
-        #groups.add(original_group)
 
-        #       User information available from One-Roster
-        source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = user['email']
-        source_attributes['username'] = user['username']
-        source_attributes['givenName'] = formatted_user['firstname'] = user['givenName']
-        source_attributes['familyName'] = formatted_user['lastname'] = user['familyName']
-        source_attributes['domain'] = formatted_user['domain'] = str(user['email']).split('@')[1]
-        source_attributes['enabledUser'] = user['enabledUser']
-        source_attributes['grades'] = user['grades']
-        source_attributes['identifier'] = user['identifier']
-        source_attributes['metadata'] = user['metadata']
-        source_attributes['middleName'] = user['middleName']
-        source_attributes['phone'] = user['phone']
-        source_attributes['role'] = user['role']
-        source_attributes['schoolId'] = user['schoolId']
+#       User information available from One-Roster
         source_attributes['sourcedId'] = user['sourcedId']
         source_attributes['status'] = user['status']
-        source_attributes['type'] = user['type']
-        source_attributes['userId'] = user['userId']
+        source_attributes['dateLastModified'] = user['dateLastModified']
+        source_attributes['username'] = user['username']
         source_attributes['userIds'] = user['userIds']
+        source_attributes['enabledUser'] = user['enabledUser']
+        source_attributes['givenName'] = formatted_user['firstname'] = user['givenName']
+        source_attributes['familyName'] = formatted_user['lastname'] = user['familyName']
+        source_attributes['middleName'] = user['middleName']
+        source_attributes['role'] = user['role']
+        source_attributes['identifier'] = user['identifier']
+        source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = user['email']
+        source_attributes['sms'] = user['sms']
+        source_attributes['phone'] = user['phone']
+        source_attributes['agents'] = user['agents']
+        source_attributes['orgs'] = user['orgs']
+        source_attributes['grades'] = user['grades']
+        source_attributes['domain'] = formatted_user['domain'] = str(user['email']).split('@')[1]
+        source_attributes['password'] = user['password']
         source_attributes[key_identifier] = user[key_identifier]
+        #Can be found in userIds if needed
+        #source_attributes['userId'] = user['userId']
+        #source_attributes['type'] = user['type']
 
         #       adds any extended_attribute values
         #       from the one-roster user information into the final user object utilized by the UST
@@ -585,3 +498,108 @@ class LDAPValueFormatter(object):
             except UnicodeError as e:
                 raise AssertionException("Encoding error in value of attribute '%s': %s" % (attribute_name, e))
         return None
+
+    # class OAuthConnector2_NON_LIB:
+    #
+    #     def __init__(self, auth_specs, token_endpoint=None):
+    #         self.auth_specs =auth_specs
+    #         self.token_endpoint = token_endpoint
+    #         self.req_headers = dict()
+    #
+    #     def authenticate(self):
+    #         payload = dict()
+    #         payload['grant_type'] = 'client_credentials'
+    #
+    #         response = requests.post(self.token_endpoint,
+    #                                  auth=(self.auth_specs['client_id'],
+    #                                        self.auth_specs['client_secret']), data=payload)
+    #
+    #         if response.status_code != 200:
+    #             raise ValueError('Token request failed:  ' + response.text)
+    #
+    #         self.req_headers['Authorization'] = "Bearer" + json.loads(response.content)['access_token']
+    #
+    #     def get(self, url=None):
+    #         return requests.get(url, headers=self.req_headers)
+    #
+    # class OAuthConnector2:
+    #
+    #     """
+    #     The OAuthLib provides multiple optional security measures when implementing OAuth2
+    #     """
+    #
+    #     #def __init__(self, client_id=None, client_secret=None, basic_header=False, token_endpoint=None):
+    #     def __init__(self, auth_specs, basic_header=False, token_endpoint=None):
+    #         self.auth_specs = auth_specs
+    #         self.basic_header = basic_header
+    #         self.token_endpoint = token_endpoint
+    #         self.token = str()
+    #
+    #     def authenticate(self):
+    #
+    #         client = BackendApplicationClient(client_id=self.auth_specs['client_id'])
+    #         oauth = OAuth2Session(client=client)
+    #
+    #         if self.basic_header is True:
+    #             auth = HTTPBasicAuth(self.auth_specs['client_id'], self.auth_specs['client_secret'])
+    #             self.token = oauth.fetch_token(self.token_endpoint, auth=auth)
+    #
+    #         else:
+    #             self.token = oauth.fetch_token(token_url=self.token_endpoint, client_id=self.auth_specs['client_id'],
+    #                                        client_secret=self.auth_specs['client_secret'])
+    #
+    #     def get(self, url=None):
+    #         return OAuth2Session(self.auth_specs['client_id'], token=self.token).get(url, token=self.token)
+    #
+    #
+    # class OAuthConnector1:
+    #
+    #     def __init__(self, auth_specs, host_name_oauth1=None):
+    #         self.auth_specs = auth_specs
+    #         self.host_name_oauth1 = host_name_oauth1
+    #         self.req_headers = dict()
+    #
+    #     def authenticate(self):
+    #         host = self.host_name_oauth1
+    #         key = self.auth_specs['client_id']
+    #         secret = self.auth_specs['client_secret']
+    #         oauth = OAuth1Session(key, secret)
+    #         fetch_response = oauth.fetch_request_token(host + 'oauth/request_token')
+    #         resource_owner_key = fetch_response.get('oauth_token')
+    #         resource_owner_secret = fetch_response.get('oauth_token_secret')
+    #
+    #         authorization_url = oauth.authorization_url(host + 'oauth/authorize')
+    #         print('Please go here and authorize,', authorization_url)
+    #         redirect_response = input('Paste the full redirect URL here: ')
+    #         oauth_response = oauth.parse_authorization_response(redirect_response)
+    #         verifier = oauth_response.get('oauth_verifier')
+    #
+    #         oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret, verifier)
+    #
+    #         oauth_tokens = oauth.fetch_access_token(host + 'oauth/access_token')
+    #
+    #         resource_owner_key = oauth_tokens.get('oauth_token')
+    #         resource_owner_secret = oauth_tokens.get('oauth_token_secret')
+    #
+    #         protected_url = 'https://api.twitter.com/1/account/settings.json'
+    #         oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret)
+    #         r = requests.get(protected_url, oauth)
+    #
+    #     def get(self, url=None):
+    #         return "users"
+
+    # def load_connector(self, auth_specs):
+    #     """
+    #     :description: Loads appropriate authentication protocol, using the Authentication specifications from connector-oneroster.yml.
+    #     :type auth_specs: dict()
+    #     :rtype: class(Proper Connector)
+    #     """
+    #
+    #     if auth_specs['auth_type'] == 'oauth2':
+    #         return OAuthConnector2(auth_specs, self.api_token_endpoint)
+    #     elif auth_specs['auth_type'] == 'oauth2_non_lib':
+    #         return OAuthConnector2_NON_LIB(auth_specs, self.api_token_endpoint)
+    #     elif auth_specs['auth_type'] == 'oauth':
+    #         return OAuthConnector1(auth_specs, self.api_token_endpoint)
+    #     else:
+    #         raise TypeError("Unrecognized authentication type: " + auth_specs['auth_type'])

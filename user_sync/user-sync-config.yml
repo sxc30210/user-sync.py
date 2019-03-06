@@ -180,9 +180,9 @@ directory_users:
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
 #
-#    - directory_group: "courses::Phy-102::students"
-#      adobe_groups:
-#        - "Mock Roster Test --Mike"
+    - directory_group: "courses::English 9::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
 
 #   Won't work since a class does not have teachers associated to it
 #    - directory_group: "courses::Phy-102::teachers"
@@ -194,34 +194,38 @@ directory_users:
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
 
-    - directory_group: "classes::Algebra I - Fall::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
+#    - directory_group: "classes::ELA 6 (6A ELA)::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
 
-    - directory_group: "classes::Geography I - Spring::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
-
-    - directory_group: "classes::Art I - Fall::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
-
-    - directory_group: "classes::Art I - Fall::teachers"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
-
-    - directory_group: "courses::Alg-102::students"
-      adobe_groups:
-        - "Mock Roster Test --Mike"
+#    - directory_group: "classes::Geography I - Spring::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
+#
+#    - directory_group: "classes::Art I - Fall::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
+#
+#    - directory_group: "classes::Art I - Fall::teachers"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
 ##
-#    - directory_group: "classes::Algebra II - Fall::students"
+#    - directory_group: "courses::Alg-101::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
+###
+#    - directory_group: "classes::Geography III - Spring::students"
+#      adobe_groups:
+#        - "Mock Roster Test --Mike"
+#
+#    - directory_group: "classes::Algebra I - Fall::students"
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
 ##
 #    - directory_group: "schools::Spring Valley Elementary School::students"
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
-#
+
 #    - directory_group: "schools::Woodland Elementary School::students"
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"

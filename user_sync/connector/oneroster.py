@@ -148,7 +148,8 @@ class OneRoster(object):
         """
 
         try:
-            r = requests.get(url=url, headers={"Authorization": auth_header}, params=url_params)
-            return {"status_code": r.status_code, "response": r.text}
+            return requests.get(url=url, headers={"Authorization": auth_header}, params=url_params)
+            #return {"status_code": r.status_code, "response": r.text}
+
         except Exception as e:
             return {"status_code": 0, "response": "An error occurred, check your URL"}

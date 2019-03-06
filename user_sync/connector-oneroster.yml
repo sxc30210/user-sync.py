@@ -12,9 +12,9 @@
 # SHA-256 signing mechanism required
 
 # Host name for organization's OneRoster implementation, eg: https://mockroster.io
-host: "https://mockroster.io/"
+host: "https://adobe-ca-v2.oneroster.com/ims/oneroster/v1p1/"
 
-api_token_endpoint: "https://mockroster.io/oauth/token"
+#api_token_endpoint: "https://mockroster.io/oauth/token"
 
 # Unique key used throughout One-Roster (sourcedId is commonly used)
 key_identifier: 'sourcedId'
@@ -23,7 +23,7 @@ key_identifier: 'sourcedId'
 country_code: 'US'
 
 #Authorization framework used to secure OneRoster endpoints
-authentication_type:
+#authentication_type:
 
     #auth_type: 'oauth2'
     #(optional) Change basic_header option to True when using the authorizatoin server requires the HTTP Basic authentication scheme,
@@ -32,17 +32,20 @@ authentication_type:
 
     #auth_type: 'oauth1'
 
-    auth_type: 'oauth2_non_lib'
+    #auth_type: 'oauth2_non_lib'
 
     #User's credentials to access protected API endpoints
-    client_id: 'oruser'
-    client_secret: 'secret'
+client_id: '264eb3d01b1e2522f9dd1d5c'
+client_secret: '10332e330b2e364020179021'
 
 
 #Pagination (required according to One Roster final specification)
 #must be supported for ALL endpoints that return a collection
 #Limit, number of results to return during each query, Implementations of One Roster default at 100
-limit: '100'
+limit: '2'
+
+#Key name to the response count of the HTTP request, found in Response.headers._store
+#header_store_count_key: 'x-count'
 
 
 #Official excerpt from One Roster
