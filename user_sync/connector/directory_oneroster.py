@@ -19,14 +19,9 @@
 # SOFTWARE.
 
 import json
-import requests
 import six
 import re
 import string
-from oauthlib.oauth2 import BackendApplicationClient
-from requests.auth import HTTPBasicAuth
-from requests_oauthlib import OAuth1Session
-from requests_oauthlib import OAuth2Session
 
 import user_sync.config
 import user_sync.connector.helper
@@ -35,6 +30,7 @@ import user_sync.identity_type
 from user_sync.error import AssertionException
 
 from user_sync.connector.oneroster import OneRoster
+
 
 def connector_metadata():
     metadata = {
@@ -79,16 +75,13 @@ class OneRosterConnector(object):
 
         self.options = builder.get_options()
         self.host = builder.require_string_value('host')
-        #self.api_token_endpoint = builder.require_string_value('api_token_endpoint')
         self.key_identifier = builder.require_string_value('key_identifier')
         self.limit = builder.require_string_value('limit')
         self.country_code = builder.require_string_value('country_code')
         self.client_id = builder.require_string_value('client_id')
         self.client_secret = builder.require_string_value('client_secret')
-        #self.auth_specs = builder.require_value('authentication_type', type({}))
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
-        #self.apiconnector = self.load_connector(self.auth_specs)
         self.oneroster = OneRoster(self.client_id, self.client_secret)
 
         options = builder.get_options()
@@ -96,16 +89,6 @@ class OneRosterConnector(object):
         self.logger = logger = user_sync.connector.helper.create_logger(options)
         logger.debug('%s initialized with options: %s', self.name, options)
         caller_config.report_unused_values(self.logger)
-
-        # LDAPValueFormatter.encoding = options['string_encoding']
-        # self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
-        # self.user_identity_type_formatter = LDAPValueFormatter(options['user_identity_type_format'])
-        # self.user_email_formatter = LDAPValueFormatter(options['user_email_format'])
-        # self.user_username_formatter = LDAPValueFormatter(options['user_username_format'])
-        # self.user_domain_formatter = LDAPValueFormatter(options['user_domain_format'])
-        # self.user_given_name_formatter = LDAPValueFormatter(options['user_given_name_format'])
-        # self.user_surname_formatter = LDAPValueFormatter(options['user_surname_format'])
-        # self.user_country_code_formatter = LDAPValueFormatter(options['user_country_code_format'])
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
@@ -143,7 +126,6 @@ class OneRosterConnector(object):
             (user_list[uid]['groups']).add(group_name)
 
         return user_list
-
 
     def convert_user(self, user_record):
         """ description: Adds country code and identity_type from yml files to User Record """
@@ -185,9 +167,7 @@ class Connection:
 
     def __init__(self, logger, host_name=None, limit='100', client_id=None, client_secret=None, oneroster=None):
         self.host_name = host_name
-        #self.connector = connector
         self.logger = logger
-        #self.connector.authenticate()
         self.limit = limit
         self.client_id = client_id
         self.client_secret = client_secret
@@ -204,8 +184,6 @@ class Connection:
         :rtype parsed_json_list: list(str)
         """
         parsed_json_list = list()
-
-
 
         if group_filter == 'courses':
             class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
@@ -225,7 +203,6 @@ class Connection:
                         break
                     parsed_json_list.extend(json.loads(response_classes.content))
 
-
         else:
             try:
 
@@ -241,8 +218,6 @@ class Connection:
                     parsed_json_list.extend(users)
 
                 while self.is_last_call_to_make(response) is False:
-                    # response = self.oneroster.make_roster_request(response.headers._store['next'][1])
-                    #xv = response.links['next']['url']
                     response = self.oneroster.make_roster_request(response.links['next']['url'])
                     if response.ok is not True:
                         break
@@ -254,6 +229,7 @@ class Connection:
                 return {}
 
         return parsed_json_list
+
     def is_last_call_to_make(self, response):
         """
         handles pagination
@@ -269,7 +245,6 @@ class Connection:
 
         except:
             return True
-
 
     def get_key_identifier(self, group_filter, group_name, key_identifier, limit):
         """
@@ -308,7 +283,6 @@ class Connection:
             parsed_json = json.loads(response.content)
             #value = parsed_json.get(group_filter)
             for each in parsed_json.get(group_filter):
-            # for x in json.loads(response.content):
                 #if self.encode_str(x[esless]) == self.encode_str(group_name):
                 if self.encode_str(each['title']) == self.encode_str(group_name):
                     try:
@@ -336,7 +310,7 @@ class Connection:
         :rtype class_list: list(str)
         """
 
-        parsed_json = list()
+        #parsed_json = list()
         class_list = dict()
         try:
             key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
@@ -427,8 +401,8 @@ class ResultParser:
         #source_attributes['userId'] = user['userId']
         #source_attributes['type'] = user['type']
 
-        #       adds any extended_attribute values
-        #       from the one-roster user information into the final user object utilized by the UST
+#       adds any extended_attribute values
+#       from the one-roster user information into the final user object utilized by the UST
         if extended_attributes is not None:
             for attribute in extended_attributes:
                 formatted_user[attribute] = user[attribute]
@@ -498,108 +472,3 @@ class LDAPValueFormatter(object):
             except UnicodeError as e:
                 raise AssertionException("Encoding error in value of attribute '%s': %s" % (attribute_name, e))
         return None
-
-    # class OAuthConnector2_NON_LIB:
-    #
-    #     def __init__(self, auth_specs, token_endpoint=None):
-    #         self.auth_specs =auth_specs
-    #         self.token_endpoint = token_endpoint
-    #         self.req_headers = dict()
-    #
-    #     def authenticate(self):
-    #         payload = dict()
-    #         payload['grant_type'] = 'client_credentials'
-    #
-    #         response = requests.post(self.token_endpoint,
-    #                                  auth=(self.auth_specs['client_id'],
-    #                                        self.auth_specs['client_secret']), data=payload)
-    #
-    #         if response.status_code != 200:
-    #             raise ValueError('Token request failed:  ' + response.text)
-    #
-    #         self.req_headers['Authorization'] = "Bearer" + json.loads(response.content)['access_token']
-    #
-    #     def get(self, url=None):
-    #         return requests.get(url, headers=self.req_headers)
-    #
-    # class OAuthConnector2:
-    #
-    #     """
-    #     The OAuthLib provides multiple optional security measures when implementing OAuth2
-    #     """
-    #
-    #     #def __init__(self, client_id=None, client_secret=None, basic_header=False, token_endpoint=None):
-    #     def __init__(self, auth_specs, basic_header=False, token_endpoint=None):
-    #         self.auth_specs = auth_specs
-    #         self.basic_header = basic_header
-    #         self.token_endpoint = token_endpoint
-    #         self.token = str()
-    #
-    #     def authenticate(self):
-    #
-    #         client = BackendApplicationClient(client_id=self.auth_specs['client_id'])
-    #         oauth = OAuth2Session(client=client)
-    #
-    #         if self.basic_header is True:
-    #             auth = HTTPBasicAuth(self.auth_specs['client_id'], self.auth_specs['client_secret'])
-    #             self.token = oauth.fetch_token(self.token_endpoint, auth=auth)
-    #
-    #         else:
-    #             self.token = oauth.fetch_token(token_url=self.token_endpoint, client_id=self.auth_specs['client_id'],
-    #                                        client_secret=self.auth_specs['client_secret'])
-    #
-    #     def get(self, url=None):
-    #         return OAuth2Session(self.auth_specs['client_id'], token=self.token).get(url, token=self.token)
-    #
-    #
-    # class OAuthConnector1:
-    #
-    #     def __init__(self, auth_specs, host_name_oauth1=None):
-    #         self.auth_specs = auth_specs
-    #         self.host_name_oauth1 = host_name_oauth1
-    #         self.req_headers = dict()
-    #
-    #     def authenticate(self):
-    #         host = self.host_name_oauth1
-    #         key = self.auth_specs['client_id']
-    #         secret = self.auth_specs['client_secret']
-    #         oauth = OAuth1Session(key, secret)
-    #         fetch_response = oauth.fetch_request_token(host + 'oauth/request_token')
-    #         resource_owner_key = fetch_response.get('oauth_token')
-    #         resource_owner_secret = fetch_response.get('oauth_token_secret')
-    #
-    #         authorization_url = oauth.authorization_url(host + 'oauth/authorize')
-    #         print('Please go here and authorize,', authorization_url)
-    #         redirect_response = input('Paste the full redirect URL here: ')
-    #         oauth_response = oauth.parse_authorization_response(redirect_response)
-    #         verifier = oauth_response.get('oauth_verifier')
-    #
-    #         oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret, verifier)
-    #
-    #         oauth_tokens = oauth.fetch_access_token(host + 'oauth/access_token')
-    #
-    #         resource_owner_key = oauth_tokens.get('oauth_token')
-    #         resource_owner_secret = oauth_tokens.get('oauth_token_secret')
-    #
-    #         protected_url = 'https://api.twitter.com/1/account/settings.json'
-    #         oauth = OAuth1Session(key, secret, resource_owner_key, resource_owner_secret)
-    #         r = requests.get(protected_url, oauth)
-    #
-    #     def get(self, url=None):
-    #         return "users"
-
-    # def load_connector(self, auth_specs):
-    #     """
-    #     :description: Loads appropriate authentication protocol, using the Authentication specifications from connector-oneroster.yml.
-    #     :type auth_specs: dict()
-    #     :rtype: class(Proper Connector)
-    #     """
-    #
-    #     if auth_specs['auth_type'] == 'oauth2':
-    #         return OAuthConnector2(auth_specs, self.api_token_endpoint)
-    #     elif auth_specs['auth_type'] == 'oauth2_non_lib':
-    #         return OAuthConnector2_NON_LIB(auth_specs, self.api_token_endpoint)
-    #     elif auth_specs['auth_type'] == 'oauth':
-    #         return OAuthConnector1(auth_specs, self.api_token_endpoint)
-    #     else:
-    #         raise TypeError("Unrecognized authentication type: " + auth_specs['auth_type'])
