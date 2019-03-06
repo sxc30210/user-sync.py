@@ -207,7 +207,7 @@ class Connection:
             try:
 
                 key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
-                response = self.oneroster.make_roster_request(self.host_name + group_filter + '/' + key_id + '/' + user_filter  + '?limit=' + limit + '&offset=0')
+                response = self.oneroster.make_roster_request(self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0')
                 if response.ok is False:
                     self.logger.warning(
                         'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
@@ -238,7 +238,7 @@ class Connection:
         """
         try:
             returned_result_count = response.headers._store['x-count'][1]
-            if returned_result_count < self.limit:
+            if int(returned_result_count) < int(self.limit):
                 return True
             else:
                 return False
@@ -270,8 +270,15 @@ class Connection:
                              + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
         parsed_json = json.loads(response.content)
         if self.is_last_call_to_make(response) is True:
-            for each_class in parsed_json:
-                if self.encode_str(each_class[esless]) == self.encode_str(group_name):
+            if group_filter == 'schools':
+                name_identifier = 'name'
+                revised_key = 'orgs'
+            else:
+                name_identifier = 'title'
+                revised_key = group_filter
+
+            for each_class in parsed_json.get(revised_key):
+                if self.encode_str(each_class[name_identifier]) == self.encode_str(group_name):
                     try:
                         key_id = each_class[key_identifier]
                     except:

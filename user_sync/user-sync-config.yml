@@ -184,6 +184,22 @@ directory_users:
       adobe_groups:
         - "Mock Roster Test --Mike"
 
+    - directory_group: "courses::English 9::teachers"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
+    - directory_group: "classes::ELA 6 (6A ELA)::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
+    - directory_group: "classes::ELA 6 (6A ELA)::teachers"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
+    - directory_group: "schools::cLasslink Elementary schOOl::students"
+      adobe_groups:
+        - "Mock Roster Test --Mike"
+
 #   Won't work since a class does not have teachers associated to it
 #    - directory_group: "courses::Phy-102::teachers"
 #      adobe_groups:
@@ -194,9 +210,6 @@ directory_users:
 #      adobe_groups:
 #        - "Mock Roster Test --Mike"
 
-#    - directory_group: "classes::ELA 6 (6A ELA)::students"
-#      adobe_groups:
-#        - "Mock Roster Test --Mike"
 
 #    - directory_group: "classes::Geography I - Spring::students"
 #      adobe_groups:
