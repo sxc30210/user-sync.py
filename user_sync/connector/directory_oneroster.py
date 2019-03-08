@@ -433,7 +433,7 @@ class RecordHandler:
         :type key_identifier: str()
         :rtype: formatted_user: dict(user object)
         """
-        key = record.get('sourcedId')
+        key = record[key_identifier]
         if key is None:
             pass
             #return
@@ -450,7 +450,7 @@ class RecordHandler:
         formatted_user = dict()
         source_attributes = dict()
 
-        record = user_sync.connector.helper.create_blank_user()
+       # record = user_sync.connector.helper.create_blank_user()
 
 
         #       User information available from One-Roster
