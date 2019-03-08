@@ -8,9 +8,6 @@ venv*
 
 
 
-
-venv*
-
 # Distribution / packaging
 .Python
 env/
