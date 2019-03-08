@@ -67,9 +67,16 @@ class OneRosterConnector(object):
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
 
         builder = user_sync.config.OptionsBuilder(caller_config)
-        builder.set_string_value('user_identity_type', None)
         builder.set_string_value('logger_name', self.name)
         builder.set_string_value('string_encoding', 'utf8')
+
+        builder.set_string_value('user_email_format', six.text_type('{email}'))
+        builder.set_string_value('user_given_name_format', six.text_type('{givenName}'))
+        builder.set_string_value('user_surname_format', six.text_type('{familyName}'))
+        builder.set_string_value('user_country_code_format', six.text_type('{countryCode}'))
+        builder.set_string_value('user_username_format', None)
+        builder.set_string_value('user_domain_format', None)
+        builder.set_string_value('user_identity_type', None)
 
         # Values from connector-oneroster.yml via builder
 
@@ -89,6 +96,17 @@ class OneRosterConnector(object):
         self.logger = logger = user_sync.connector.helper.create_logger(options)
         logger.debug('%s initialized with options: %s', self.name, options)
         caller_config.report_unused_values(self.logger)
+        
+        
+        OneRosterValueFormatter.encoding = options['string_encoding']
+        self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
+        self.user_email_formatter = OneRosterValueFormatter(options['user_email_format'])
+        self.user_username_formatter = OneRosterValueFormatter(options['user_username_format'])
+        self.user_domain_formatter = OneRosterValueFormatter(options['user_domain_format'])
+        self.user_given_name_formatter = OneRosterValueFormatter(options['user_given_name_format'])
+        self.user_surname_formatter = OneRosterValueFormatter(options['user_surname_format'])
+        self.user_country_code_formatter = OneRosterValueFormatter(options['user_country_code_format'])
+        
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
@@ -137,7 +155,7 @@ class OneRosterConnector(object):
         """
         description: parses group options from user-sync.config file into a nested dict with Key: group_filter for the outter dict, Value: being the nested
         dict {Key: group_name, Value: user_filter}
-        :type groups_list: set(str) from user-sync-config.yml
+        :type groups_list: set(str) from user-sync-config-ldap.yml
         :rtype: iterable(dict)
         """
 
@@ -443,7 +461,7 @@ class ResultParser:
         return formatted_user
 
 
-class LDAPValueFormatter(object):
+class OneRosterValueFormatter(object):
     encoding = 'utf8'
 
     def __init__(self, string_format):
