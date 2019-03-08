@@ -4,7 +4,7 @@ prebuilt_dir = external
 
 ifeq ($(OS),Windows_NT)
 	output_file_extension = .pex
-	rm_path := $(shell python -c "import distutils.spawn; print(distutils.spawn.find_executable('rm'))")
+	rm_path := $(shell python -c "import distutils.spawn; print(distutils.spawn.find_executable('rm'))")py
     ifeq ($(rm_path),None)
         RM := rmdir /S /Q
     else

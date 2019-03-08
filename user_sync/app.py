@@ -157,7 +157,7 @@ def process_args(args=None):
     parser.add_argument('--connector',
                         help='specify a connector to use; default is LDAP (or CSV if --users file is specified)',
                         nargs='+',
-                        metavar=('ldap|okta|csv', 'path-to-file.csv'),
+                        metavar=('ldap|okta|csv|oneroster', 'path-to-file.csv'),
                         dest='connector')
     parser.add_argument('--process-groups',
                         help='if membership in mapped groups differs between the enterprise directory and Adobe sides, '

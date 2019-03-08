@@ -3,8 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
-*.so
+
+venv*
+
+
 
 
 venv*
@@ -82,6 +84,7 @@ celerybeat-schedule
 .env
 
 # virtualenv
+
 venv/
 ENV/
 
@@ -98,3 +101,7 @@ ENV/
 _site
 .sass-cache
 .jekyll-metadata
+
+# Keys
+private.key
+certificate_pub.crt

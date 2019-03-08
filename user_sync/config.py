@@ -315,6 +315,7 @@ class ConfigLoader(object):
             connectors_config.get_list('ldap', True)
             connectors_config.get_list('csv', True)
             connectors_config.get_list('okta', True)
+            connectors_config.get_list('oneroster', True)
         return connectors_config
 
     def get_directory_connector_options(self, connector_name):

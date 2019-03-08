@@ -18,16 +18,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import okta
+import json
 import six
+import re
 import string
-from okta.framework.OktaError import OktaError
 
 import user_sync.config
 import user_sync.connector.helper
 import user_sync.helper
 import user_sync.identity_type
 from user_sync.error import AssertionException
+
+from user_sync.connector.oneroster import OneRoster
 
 
 def connector_metadata():
@@ -47,13 +49,12 @@ def connector_initialize(options):
 
 def connector_load_users_and_groups(state, groups=None, extended_attributes=None, all_users=True):
     """
-    :type state: OneRosterConnector
-    :type groups: list(str)
-    :type extended_attributes: list(str)
+    :type state: LDAPDirectoryConnector
+    :type groups: Optional(list(str))
+    :type extended_attributes: Optional(list(str))
     :type all_users: bool
     :rtype (bool, iterable(dict))
     """
-
     return state.load_users_and_groups(groups or [], extended_attributes or [], all_users)
 
 
@@ -62,297 +63,433 @@ class OneRosterConnector(object):
 
     def __init__(self, caller_options):
 
-
         # Get the configuration information and apply data from YAML
-
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
+
         builder = user_sync.config.OptionsBuilder(caller_config)
-        builder.set_string_value('group_filter_format',
-                                 '{group}')
-        builder.set_string_value('all_users_filter',
-                                 'user.status == "ACTIVE"')
+        builder.set_string_value('logger_name', self.name)
         builder.set_string_value('string_encoding', 'utf8')
-        builder.set_string_value('user_identity_type_format', None)
+
         builder.set_string_value('user_email_format', six.text_type('{email}'))
+        builder.set_string_value('user_given_name_format', six.text_type('{givenName}'))
+        builder.set_string_value('user_surname_format', six.text_type('{familyName}'))
+        builder.set_string_value('user_country_code_format', six.text_type('{countryCode}'))
         builder.set_string_value('user_username_format', None)
         builder.set_string_value('user_domain_format', None)
-        builder.set_string_value('user_given_name_format', six.text_type('{firstName}'))
-        builder.set_string_value('user_surname_format', six.text_type('{lastName}'))
-        builder.set_string_value('user_country_code_format', six.text_type('{countryCode}'))
         builder.set_string_value('user_identity_type', None)
-        builder.set_string_value('logger_name', self.name)
 
-        host = builder.require_string_value('host')
-        api_token = builder.require_string_value('api_token')
-        hello = builder.require_string_value('hello')
+        # Values from connector-oneroster.yml via builder
 
-        # Assemble data from YAML into options object
+        self.options = builder.get_options()
+        self.host = builder.require_string_value('host')
+        self.key_identifier = builder.require_string_value('key_identifier')
+        self.limit = builder.require_string_value('limit')
+        if int(self.limit) < 1:
+            raise ValueError("limit must be >= 1")
+        self.country_code = builder.require_string_value('country_code')
+        self.client_id = builder.require_string_value('client_id')
+        self.client_secret = builder.require_string_value('client_secret')
+        self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
+        self.logger = user_sync.connector.helper.create_logger(self.options)
         options = builder.get_options()
-
-
-
-        OKTAValueFormatter.encoding = options['string_encoding']
-        self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
-        self.user_identity_type_formatter = OKTAValueFormatter(options['user_identity_type_format'])
-        self.user_email_formatter = OKTAValueFormatter(options['user_email_format'])
-        self.user_username_formatter = OKTAValueFormatter(options['user_username_format'])
-        self.user_domain_formatter = OKTAValueFormatter(options['user_domain_format'])
-        self.user_given_name_formatter = OKTAValueFormatter(options['user_given_name_format'])
-        self.user_surname_formatter = OKTAValueFormatter(options['user_surname_format'])
-        self.user_country_code_formatter = OKTAValueFormatter(options['user_country_code_format'])
-
-        self.users_client = None
-        self.groups_client = None
-        self.logger = logger = user_sync.connector.helper.create_logger(options)
-        self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
         self.options = options
-        caller_config.report_unused_values(logger)
+        self.logger = logger = user_sync.connector.helper.create_logger(options)
 
-        # if not host.startswith('https://'):
-        #     if "://" in host:
-        #         raise AssertionException("Okta protocol must be https")
-        #     host = "https://" + host
-        #
-        # self.user_by_uid = {}
-        #
-        # logger.debug('%s initialized with options: %s', self.name, options)
-        #
-        # logger.info('Connecting to: %s', host)
+        logger.debug('%s initialized with options: %s', self.name, options)
+        caller_config.report_unused_values(self.logger)
 
-        # try:
-        #     self.users_client = okta.UsersClient(host, api_token)
-        #     self.groups_client = okta.UserGroupsClient(host, api_token)
-        # except OktaError as e:
-        #     raise AssertionException("Error connecting to Okta: %s" % e)
-        #
-        # logger.info('Connected')
+
+        self.results_parser = RecordHandler(options, logger)
+        
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
+        description: Leverages class components to return and send a user list to UMAPI
         :type groups: list(str)
         :type extended_attributes: list(str)
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-        # if all_users:
-        #     raise AssertionException("Okta connector has no notion of all users, please specify a --users group")
-        #
-        # options = self.options
-        # all_users_filter = options['all_users_filter']
-        #
-        # self.logger.info('Loading users...')
-        # self.user_by_uid = user_by_uid = {}
-        #
-        # for group in groups:
-        #     total_group_members = 0
-        #     total_group_users = 0
-        #     for user in self.iter_group_members(group, all_users_filter, extended_attributes):
-        #         total_group_members += 1
-        #
-        #         uid = user.get('uid')
-        #         if user and uid:
-        #             if uid not in user_by_uid:
-        #                 user_by_uid[uid] = user
-        #             total_group_users += 1
-        #             user_groups = user_by_uid[uid]['groups']
-        #             if group not in user_groups:
-        #                 user_groups.append(group)
-        #
-        #     self.logger.debug('Group %s members: %d users: %d', group, total_group_members, total_group_users)
-        #
-        # return six.itervalues(user_by_uid)
+        conn = Connection(self.logger, self.host, self.limit, self.client_id, self.client_secret)
+        groups_from_yml = self.parse_yml_groups(groups)
+        users_result = {}
 
-        users = {
-            'CN=Jake Sisko,OU=People,DC=perficientads,DC=com': {
-                'identity_type': 'federatedID',
-                'username': 'jsisko@perficientads.com',
-                'domain': 'perficientads.com',
-                'firstname': 'Jake',
-                'lastname': 'Sisko',
-                'email': 'jsisko@perficientads.com',
-                'groups': [
-                    'Perficient ADS Adobe'
-                ],
-                'country': 'US',
-                'source_attributes': {
-                    'email': 'jsisko@perficientads.com',
-                    'identity_type': None,
-                    'username': None,
-                    'domain': None,
-                    'givenName': 'Jake',
-                    'sn': 'Sisko',
-                    'c': 'US'
-                }
-            }
-        }
+        for group_filter in groups_from_yml:
+            inner_dict = groups_from_yml[group_filter]
+            for group_name in inner_dict:
+                for user_group in inner_dict[group_name]:
+                    user_filter = inner_dict[group_name][user_group]
+                    users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier, self.limit)
+                    api_response = self.results_parser.parse_results(users_list, self.key_identifier)
+                    users_result = self.merge_users(users_result, api_response, user_group)
 
-        return six.itervalues(users)
+        for first_dict in users_result:
+            values = users_result[first_dict]
+            self.convert_user(values)
 
-    def find_group(self, group):
+        return six.itervalues(users_result)
+
+    def merge_users(self, user_list, new_users, group_name):
+
+        for uid in new_users:
+            if uid not in user_list:
+                user_list[uid] = new_users[uid]
+
+            (user_list[uid]['groups']).add(group_name)
+
+        return user_list
+
+    def convert_user(self, user_record):
+        """ description: Adds country code and identity_type from yml files to User Record """
+
+        user_record['identity_type'] = self.user_identity_type
+        user_record['country'] = self.country_code
+
+    def parse_yml_groups(self, groups_list):
         """
-        :type group: str
-        :rtype UserGroup
-        """
-        group = group.strip()
-        options = self.options
-        group_filter_format = options['group_filter_format']
-        try:
-            results = self.groups_client.get_groups(query=group_filter_format.format(group=group))
-        except KeyError as e:
-            raise AssertionException("Bad format key in group query (%s): %s" % (group_filter_format, e))
-        except OktaError as e:
-            self.logger.warning("Unable to query group")
-            raise AssertionException("Okta error querying for group: %s" % e)
-
-        if results is None:
-            self.logger.warning("No group found for: %s", group)
-        else:
-            for result in results:
-                if result.profile.name == group:
-                    return result
-
-        return None
-
-    def iter_group_members(self, group, filter_string, extended_attributes):
-        """
-        :type group: str
-        :type filter_string: str
-        :type extended_attributes: list
-        :rtype iterator(str, str)
+        description: parses group options from user-sync.config file into a nested dict with Key: group_filter for the outter dict, Value: being the nested
+        dict {Key: group_name, Value: user_filter}
+        :type groups_list: set(str) from user-sync-config-ldap.yml
+        :rtype: iterable(dict)
         """
 
-        user_attribute_names = []
-        user_attribute_names.extend(self.user_given_name_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_surname_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_country_code_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_identity_type_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_email_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_username_formatter.get_attribute_names())
-        user_attribute_names.extend(self.user_domain_formatter.get_attribute_names())
-        extended_attributes = list(set(extended_attributes) - set(user_attribute_names))
-        user_attribute_names.extend(extended_attributes)
+        full_dict = dict()
 
-        res_group = self.find_group(group)
-        if res_group:
+        for text in groups_list:
             try:
-                attr_dict = OKTAValueFormatter.get_extended_attribute_dict(user_attribute_names)
-                members = self.groups_client.get_group_all_users(res_group.id, attr_dict)
-            except OktaError as e:
-                self.logger.warning("Unable to get_group_users")
-                raise AssertionException("Okta error querying for group users: %s" % e)
-            # Filtering users based all_users_filter query in config
-            for member in self.filter_users(members, filter_string):
-                user = self.convert_user(member, extended_attributes)
-                if not user:
-                    continue
-                yield (user)
+                group_filter, group_name, user_filter = text.lower().split("::")
+            except ValueError:
+                raise ValueError("Incorrect MockRoster Group Syntax: " + text + " \nRequires values for group_filter, group_name, user_filter. With '::' separating each value")
+            if group_filter not in ['classes', 'courses', 'schools']:
+                raise ValueError("Incorrect group_filter: " + group_filter + " .... must be either: classes, courses, or schools")
+            if user_filter not in ['students', 'teachers', 'users']:
+                raise ValueError("Incorrect user_filter: " + user_filter + " .... must be either: students, teachers, or users")
+
+            if group_filter not in full_dict:
+                full_dict[group_filter] = {group_name: dict()}
+            elif group_name not in full_dict[group_filter]:
+                full_dict[group_filter][group_name] = dict()
+
+            full_dict[group_filter][group_name].update({text: user_filter})
+
+        return full_dict
+
+class Connection:
+    """ Starts connection and makes queries with One-Roster API"""
+
+    def __init__(self, logger, host_name=None, limit='100', client_id=None, client_secret=None):
+        self.host_name = host_name
+        self.logger = logger
+        self.limit = limit
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.oneroster = OneRoster(client_id, client_secret)
+
+    def get_user_list(self, group_filter, group_name, user_filter, key_identifier, limit):
+        """
+        description:
+        :type group_filter: str()
+        :type group_name: str()
+        :type user_filter: str()
+        :type key_identifier: str()
+        :type limit: str()
+        :rtype parsed_json_list: list(str)
+        """
+        parsed_json_list = list()
+
+        if group_filter == 'courses':
+            class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
+            for each_class in class_list:
+                key_id_classes = class_list[each_class]
+                response_classes = self.oneroster.make_roster_request(self.host_name + 'classes' + '/' + key_id_classes + '/' + user_filter + '?limit=' + limit + '&offset=0')
+                if response_classes.ok is False:
+                    self.logger.warning(
+                        'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
+                        response_classes.text)
+                    return {}
+                for ignore3, users3 in json.loads(response_classes.content).items():
+                    parsed_json_list.extend(users3)
+                while self.is_last_call_to_make(response_classes) is False:
+                    response_classes = self.oneroster.make_roster_request(response_classes.headers._store['next'][1])
+                    if response_classes.ok is not True:
+                        break
+                    parsed_json_list.extend(json.loads(response_classes.content))
+
         else:
-            self.logger.warning("No group found for: %s", group)
+            try:
 
-    def convert_user(self, record, extended_attributes):
+                key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
+                response = self.oneroster.make_roster_request(self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0')
+                if response.ok is False:
+                    self.logger.warning(
+                        'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
+                        response.text)
+                    return {}
 
-        source_attributes = {}
-        source_attributes['login'] = login = OKTAValueFormatter.get_profile_value(record,'login')
+                for ignore, users in json.loads(response.content).items():
+                    parsed_json_list.extend(users)
+
+                while self.is_last_call_to_make(response) is False:
+                    response = self.oneroster.make_roster_request(response.links['next']['url'])
+                    if response.ok is not True:
+                        break
+                    for ignore2, users2 in json.loads(response.content).items():
+                        parsed_json_list.extend(users2)
+
+            except ValueError as e:
+                self.logger.warning(e)
+                return {}
+
+        return parsed_json_list
+
+    def is_last_call_to_make(self, response):
+        """
+        handles pagination
+        :type response: dict() response from url call
+        :rType: boolean:
+        """
+
+        try:
+            if response.links['next']['url'] is not None:
+                return False
+        except:
+            return True
+
+        returned_result_count = response.headers._store['x-count'][1]
+        if int(returned_result_count) < int(self.limit):
+            return True
+        else:
+            return False
+
+
+
+    def get_key_identifier(self, group_filter, group_name, key_identifier, limit):
+        """
+        description: Returns key_identifier (eg: sourcedID) for targeted group_name from One-Roster
+        :type group_filter: str()
+        :type group_name: str()
+        :type key_identifier: str()
+        :type limit: str()
+        :rtype sourced_id: str()
+        """
+        keys = list()
+        # Not used if using name and title
+        # if group_filter == 'courses':
+        #     esless = group_filter[:-1] + "Code"
+        # elif group_filter == 'classes':
+        #     esless = group_filter[:-2] + "Code"
+        # else:
+        #     esless = 'name'
+
+        response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit + '&offset=0')
+
+        if response.status_code is not 200:
+            raise ValueError('Non Successful Response'
+                             + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
+        parsed_json = json.loads(response.content)
+        if self.is_last_call_to_make(response) is True:
+            if group_filter == 'schools':
+                name_identifier = 'name'
+                revised_key = 'orgs'
+            else:
+                name_identifier = 'title'
+                revised_key = group_filter
+            try:
+                for each_class in parsed_json.get(revised_key):
+                    if self.encode_str(each_class[name_identifier]) == self.encode_str(group_name):
+                        try:
+                            key_id = each_class[key_identifier]
+                        except:
+                            raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+                        keys.append(key_id)
+                        break
+            except:
+                raise AssertionException("response list key mismatch" + "for" + revised_key)
+        while self.is_last_call_to_make(response) is False:
+            if group_filter == 'schools':
+                name_identifier = 'name'
+                revised_key = 'orgs'
+            else:
+                name_identifier = 'title'
+                revised_key = group_filter
+            parsed_json = json.loads(response.content)
+            for each in parsed_json.get(revised_key):
+                if self.encode_str(each[name_identifier]) == self.encode_str(group_name):
+                    try:
+                        key_id = each[key_identifier]
+                        keys.append(key_id)
+                        return keys[0]
+                    except:
+                        raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+
+            response = self.oneroster.make_roster_request(response.links['next']['url'])
+        parsed_json = json.loads(response.content)
+        for each in parsed_json.get(revised_key):
+            if self.encode_str(each[name_identifier]) == self.encode_str(group_name):
+                try:
+                    key_id = each[key_identifier]
+                    keys.append(key_id)
+                    return keys[0]
+                except:
+                    raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+
+        if len(keys) == 0:
+            raise ValueError('No key ids found for: ' + " " + group_filter + ":" + " " + group_name)
+        elif len(keys) > 1:
+            raise ValueError('Duplicate ID found: ' + " " + group_filter + ":" + " " + group_name)
+
+        return keys[0]
+
+    def get_classlist_for_course(self, group_name, key_identifier, limit):
+        """
+        description: returns list of sourceIds for classes of a course (group_name)
+        :type group_name: str()
+        :type key_identifier: str()
+        :type limit: str()
+        :rtype class_list: list(str)
+        """
+
+        class_list = dict()
+        try:
+            key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
+            response = self.oneroster.make_roster_request(self.host_name + 'courses' + '/' + key_id + '/' + 'classes' + '?limit=' + limit + '&offset=0')
+
+            if response.ok is not True:
+                status = response.status_code
+                message = response.reason
+                raise ValueError('Non Successful Response'
+                                 + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
+            parsed_json = json.loads(response.content)
+
+            while self.is_last_call_to_make(response) is False:
+                response = self.oneroster.make_roster_request(response.headers._store['next'][1])
+                if response.ok is not True:
+                    break
+                parsed_json.extend(json.loads(response.content))
+
+            for ignore, each_class in parsed_json.items():
+                class_key_id = each_class[0][key_identifier]
+                #class_name = each_class['classCode']
+                class_name = each_class[0]['title']
+                class_list[class_name] = class_key_id
+
+        except ValueError as e:
+            self.logger.warning(e)
+
+        return class_list
+
+    def encode_str(self, text):
+        return re.sub(r'(\s)', '', text).lower()
+
+
+class RecordHandler:
+
+
+    def __init__(self, options, logger):
+
+        self.logger = logger
+
+        OneRosterValueFormatter.encoding = options['string_encoding']
+        self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
+        self.user_email_formatter = OneRosterValueFormatter(options['user_email_format'])
+        self.user_username_formatter = OneRosterValueFormatter(options['user_username_format'])
+        self.user_domain_formatter = OneRosterValueFormatter(options['user_domain_format'])
+        self.user_given_name_formatter = OneRosterValueFormatter(options['user_given_name_format'])
+        self.user_surname_formatter = OneRosterValueFormatter(options['user_surname_format'])
+        self.user_country_code_formatter = OneRosterValueFormatter(options['user_country_code_format'])
+
+        self.user_attribute_names = []
+        self.user_attribute_names.extend(self.user_given_name_formatter.get_attribute_names())
+        self.user_attribute_names.extend(self.user_surname_formatter.get_attribute_names())
+        self.user_attribute_names.extend(self.user_country_code_formatter.get_attribute_names())
+        self.user_attribute_names.extend(self.user_email_formatter.get_attribute_names())
+        self.user_attribute_names.extend(self.user_username_formatter.get_attribute_names())
+        self.user_attribute_names.extend(self.user_domain_formatter.get_attribute_names())
+
+
+    def parse_results(self, result_set, key_identifier):
+        """
+        description: parses through user_list from API calls, to create final user objects
+        :type result_set: list(dict())
+        :type extended_attributes: list(str)
+        :type original_group: str()
+        :type key_identifier: str()
+        :rtype users_dict: dict(constructed user objects)
+        """
+        users_dict = dict()
+        for user in result_set:
+            if user['status'] == 'active':
+                returned_user = self.create_user_object(user, key_identifier)
+                users_dict[user[key_identifier]] = returned_user
+        return users_dict
+
+
+    def create_user_object(self, record, key_identifier):
+        """
+        description: Using user's API information to construct final user objects
+        :type record: dict()
+        :type extended_attributes: list(str)
+        :type original_group: str()
+        :type key_identifier: str()
+        :rtype: formatted_user: dict(user object)
+        """
+        key = record[key_identifier]
+        if key is None:
+            pass
+            #return
+
         email, last_attribute_name = self.user_email_formatter.generate_value(record)
         email = email.strip() if email else None
         if not email:
             if last_attribute_name is not None:
-                self.logger.warning('Skipping user with login %s: empty email attribute (%s)', login, last_attribute_name)
-            return None
-        user = user_sync.connector.helper.create_blank_user()
-        source_attributes['id'] = user['uid'] = record.id
-        source_attributes['email'] = email
-        user['email'] = email
-
-        source_attributes['identity_type'] = user_identity_type = self.user_identity_type
-        if not user_identity_type:
-            user['identity_type'] = self.user_identity_type
-        else:
-            try:
-                user['identity_type'] = user_sync.identity_type.parse_identity_type(user_identity_type)
-            except AssertionException as e:
-                self.logger.warning('Skipping user %s: %s', login, e)
-                return None
+                self.logger.warning('Skipping user with id %s: empty email attribute (%s)',  key, last_attribute_name)
+            #return
 
 
 
-        username, last_attribute_name = self.user_username_formatter.generate_value(record)
-        username = username.strip() if username else None
-        source_attributes['username'] = username
-        if username:
-            user['username'] = username
-        else:
-            if last_attribute_name:
-                self.logger.warning('No username attribute (%s) for user with login: %s, default to email (%s)',
-                                    last_attribute_name, login, email)
-            user['username'] = email
+        formatted_user = dict()
+        source_attributes = dict()
 
-        domain, last_attribute_name = self.user_domain_formatter.generate_value(record)
-        domain = domain.strip() if domain else None
-        source_attributes['domain'] = domain
-        if domain:
-            user['domain'] = domain
-        elif username != email:
-            user['domain'] = email[email.find('@') + 1:]
-        elif last_attribute_name:
-            self.logger.warning('No domain attribute (%s) for user with login: %s', last_attribute_name, login)
+       # record = user_sync.connector.helper.create_blank_user()
 
-        first_name_value, last_attribute_name = self.user_given_name_formatter.generate_value(record)
-        source_attributes['firstName'] = first_name_value
-        if first_name_value is not None:
-            user['firstname'] = first_name_value
-        elif last_attribute_name:
-            self.logger.warning('No given name attribute (%s) for user with login: %s', last_attribute_name, login)
-        last_name_value, last_attribute_name = self.user_surname_formatter.generate_value(record)
-        source_attributes['lastName'] = last_name_value
-        if last_name_value is not None:
-            user['lastname'] = last_name_value
-        elif last_attribute_name:
-            self.logger.warning('No last name attribute (%s) for user with login: %s', last_attribute_name, login)
-        country_value, last_attribute_name = self.user_country_code_formatter.generate_value(record)
-        source_attributes['c'] = country_value
-        if country_value is not None:
-            user['country'] = country_value.upper()
-        elif last_attribute_name:
-            self.logger.warning('No country code attribute (%s) for user with login: %s', last_attribute_name, login)
 
-        if extended_attributes is not None:
-            for extended_attribute in extended_attributes:
-                extended_attribute_value = OKTAValueFormatter.get_profile_value(record, extended_attribute)
-                source_attributes[extended_attribute] = extended_attribute_value
-
-        user['source_attributes'] = source_attributes.copy()
-        return user
-
-    def iter_search_result(self, filter_string, attributes):
-        """
-        type: filter_string: str
-        type: attributes: list(str)
-        """
-
-        attr_dict = OKTAValueFormatter.get_extended_attribute_dict(attributes)
-
+        #       User information available from One-Roster
         try:
-            self.logger.info("Calling okta SDK get_users with the following %s", filter_string)
-            if attr_dict:
-                users = self.users_client.get_all_users(query=filter_string, extended_attribute=attr_dict)
-            else:
-                users = self.users_client.get_all_users(query=filter_string)
-        except OktaError as e:
-            self.logger.warning("Unable to query users")
-            raise AssertionException("Okta error querying for users: %s" % e)
-        return users
+            source_attributes['sourcedId'] = record['sourcedId']
+            source_attributes['status'] = record['status']
+            source_attributes['dateLastModified'] = record['dateLastModified']
+            source_attributes['username'] = record['username']
+            source_attributes['userIds'] = record['userIds']
+            source_attributes['enabledUser'] = record['enabledUser']
+            source_attributes['givenName'] = formatted_user['firstname'] = record['givenName']
+            source_attributes['familyName'] = formatted_user['lastname'] = record['familyName']
+            source_attributes['middleName'] = record['middleName']
+            source_attributes['role'] = record['role']
+            source_attributes['identifier'] = record['identifier']
+            source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = record['email']
+            source_attributes['sms'] = record['sms']
+            source_attributes['phone'] = record['phone']
+            source_attributes['agents'] = record['agents']
+            source_attributes['orgs'] = record['orgs']
+            source_attributes['grades'] = record['grades']
+            source_attributes['domain'] = formatted_user['domain'] = str(record['email']).split('@')[1]
+            source_attributes['password'] = record['password']
+            source_attributes[key_identifier] = record[key_identifier]
+            #Can be found in userIds if needed
+            #source_attributes['userId'] = user['userId']
+            #source_attributes['type'] = user['type']
 
-    def filter_users(self, users, filter_string):
-        try:
-            return list(filter(lambda user: eval(filter_string), users))
-        except SyntaxError as e:
-            raise AssertionException("Invalid syntax in predicate (%s): cannot evaluate" % filter_string)
-        except Exception as e:
-            raise AssertionException("Error filtering with predicate (%s): %s" % (filter_string, e))
+        except:
+            raise AssertionException("A key not found in user info object")
 
 
-class OKTAValueFormatter(object):
+        formatted_user['source_attributes'] = source_attributes
+        formatted_user['groups'] = set()
+
+        return formatted_user
+
+
+class OneRosterValueFormatter(object):
     encoding = 'utf8'
 
     def __init__(self, string_format):
@@ -362,7 +499,7 @@ class OKTAValueFormatter(object):
         if string_format is None:
             attribute_names = []
         else:
-            string_format = six.text_type(string_format)  # force unicode so attribute values are unicode
+            string_format = six.text_type(string_format)    # force unicode so attribute values are unicode
             formatter = string.Formatter()
             attribute_names = [six.text_type(item[1]) for item in formatter.parse(string_format) if item[1]]
         self.string_format = string_format
@@ -374,16 +511,6 @@ class OKTAValueFormatter(object):
         """
         return self.attribute_names
 
-    @staticmethod
-    def get_extended_attribute_dict(attributes):
-
-        attr_dict = {}
-        for attribute in attributes:
-            if attribute not in attr_dict:
-                attr_dict.update({attribute: str})
-
-        return attr_dict
-
     def generate_value(self, record):
         """
         :type record: dict
@@ -394,7 +521,7 @@ class OKTAValueFormatter(object):
         if self.string_format is not None:
             values = {}
             for attribute_name in self.attribute_names:
-                value = self.get_profile_value(record, attribute_name)
+                value = self.get_attribute_value(record, attribute_name, first_only=True)
                 if value is None:
                     values = None
                     break
@@ -404,17 +531,24 @@ class OKTAValueFormatter(object):
         return result, attribute_name
 
     @classmethod
-    def get_profile_value(cls, record, attribute_name):
+    def get_attribute_value(cls, attributes, attribute_name, first_only=False):
         """
         The attribute value type must be decodable (str in py2, bytes in py3)
-        :type record: okta.models.user.User
+        :type attributes: dict
         :type attribute_name: unicode
+        :type first_only: bool
         """
-        if hasattr(record.profile, attribute_name):
-            attribute_values = getattr(record.profile,attribute_name)
-            if attribute_values:
-                try:
-                    return attribute_values.decode(cls.encoding)
-                except UnicodeError as e:
-                    raise AssertionException("Encoding error in value of attribute '%s': %s" % (attribute_name, e))
+        attribute_values = attributes.get(attribute_name)
+        if attribute_values:
+            try:
+                if first_only or len(attribute_values) == 1:
+
+                    attr = attribute_values if isinstance(attribute_values, six.string_types) else attribute_values[0]
+                    return attr if isinstance(attr, six.string_types) else attr.decode(cls.encoding)
+
+                else:
+                    return [(val if isinstance(val, six.string_types)
+                             else val.decode(cls.encoding)) for val in attribute_values]
+            except UnicodeError as e:
+                raise AssertionException("Encoding error in value of attribute '%s': %s" % (attribute_name, e))
         return None
