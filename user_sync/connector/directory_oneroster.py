@@ -433,7 +433,7 @@ class RecordHandler:
         :type key_identifier: str()
         :rtype: formatted_user: dict(user object)
         """
-        key = record[key_identifier]
+        key = record.get(key_identifier)
         if key is None:
             pass
             #return
