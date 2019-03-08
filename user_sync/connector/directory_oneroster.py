@@ -94,9 +94,9 @@ class OneRosterConnector(object):
         options = builder.get_options()
         self.options = options
         self.logger = logger = user_sync.connector.helper.create_logger(options)
+
         logger.debug('%s initialized with options: %s', self.name, options)
         caller_config.report_unused_values(self.logger)
-        
         
         OneRosterValueFormatter.encoding = options['string_encoding']
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
@@ -106,6 +106,8 @@ class OneRosterConnector(object):
         self.user_given_name_formatter = OneRosterValueFormatter(options['user_given_name_format'])
         self.user_surname_formatter = OneRosterValueFormatter(options['user_surname_format'])
         self.user_country_code_formatter = OneRosterValueFormatter(options['user_country_code_format'])
+
+        self.results_parser = ResultParser()
         
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
@@ -126,7 +128,7 @@ class OneRosterConnector(object):
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
                     users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier, self.limit)
-                    api_response = ResultParser.parse_results(users_list, extended_attributes, self.key_identifier)
+                    api_response = self.results_parser.parse_results(users_list, extended_attributes, self.key_identifier)
                     users_result = self.merge_users(users_result, api_response, user_group)
 
         for first_dict in users_result:
@@ -390,8 +392,12 @@ class Connection:
 
 class ResultParser:
 
-    @staticmethod
-    def parse_results(result_set, extended_attributes, key_identifier):
+
+    def __init__(self):
+        pass
+
+
+    def parse_results(self, result_set, extended_attributes, key_identifier):
         """
         description: parses through user_list from API calls, to create final user objects
         :type result_set: list(dict())
@@ -403,12 +409,12 @@ class ResultParser:
         users_dict = dict()
         for user in result_set:
             if user['status'] == 'active':
-                returned_user = ResultParser.create_user_object(user, extended_attributes, key_identifier)
+                returned_user = self.create_user_object(user, extended_attributes, key_identifier)
                 users_dict[user[key_identifier]] = returned_user
         return users_dict
 
-    @staticmethod
-    def create_user_object(user, extended_attributes, key_identifier):
+
+    def create_user_object(self, user, extended_attributes, key_identifier):
         """
         description: Using user's API information to construct final user objects
         :type user: dict()
