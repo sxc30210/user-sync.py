@@ -120,7 +120,7 @@ limit: '100'
 # The default value is from "email" field in Okta user profile.
 # NOTE: for this and every format setting, the constant strings must be in
 # the encoding specified by the string_encoding setting, above.
-#user_email_format: "{email}"
+user_email_format: "{email}"
 
 # (optional) user_domain_format (no default value)
 # user_domain_format is analogous to user_email_format in syntax, but it
@@ -139,7 +139,7 @@ limit: '100'
 # will be taken from the user's email.
 # This example supposes that the department and user_id are concatenated to
 # produce a unique username for each user.
-#user_username_format: "{department}_{user_id}"
+user_username_format: "{username}"
 
 # (optional) user_given_name_format (default value given below)
 # user_given_name_format specifies how to construct a user's given name by
@@ -149,7 +149,7 @@ limit: '100'
 # The default value is from "firstName" field in Okta user profile..
 # NOTE: for this and every format setting, the constant strings must be in
 # the encoding specified by the string_encoding setting, above.
-#user_given_name_format: "{firstName}"
+user_given_name_format: "{firstName}"
 
 # (optional) user_surname_format (default value given below)
 # user_surname_format specifies how to construct a user's surname by
@@ -159,7 +159,7 @@ limit: '100'
 # The default value is from "lastName" field in Okta user profile.
 # NOTE: for this and every format setting, the constant strings must be in
 # the encoding specified by the string_encoding setting, above.
-#user_surname_format: "{lastName}"
+user_surname_format: "{familyName}"
 
 # (optional) user_country_code_format (default value given below)
 # user_country_code_format specifies how to construct a user's country code by
@@ -169,5 +169,5 @@ limit: '100'
 # The default value is from "countryCode" field in Okta user profile.
 # NOTE: for this and every format setting, the constant strings must be in
 # the encoding specified by the string_encoding setting, above.
-#user_country_code_format: "{countryCode}"
+user_country_code_format: "{countryCode}"
 

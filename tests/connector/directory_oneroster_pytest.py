@@ -137,7 +137,7 @@ class TestOneRosterConnector(TestCase):
             'type': 'LDAP',
             'password': 'secret'}]
 
-        returned_dict = ResultParser.parse_results(result_set, extended_attributes, self.connector.key_identifier)
+        returned_dict = RecordHandler.parse_results(result_set, extended_attributes, self.connector.key_identifier)
 
         expected_user_dict = {
             'bc16d091-7017-4f2f-9109-250fd590ca6a':
