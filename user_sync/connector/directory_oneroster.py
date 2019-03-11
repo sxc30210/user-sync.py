@@ -77,6 +77,7 @@ class OneRosterConnector(object):
         builder.set_string_value('user_username_format', None)
         builder.set_string_value('user_domain_format', None)
         builder.set_string_value('user_identity_type', None)
+        builder.set_string_value('user_identity_type_format', None)
 
         # Values from connector-oneroster.yml via builder
 
@@ -120,7 +121,7 @@ class OneRosterConnector(object):
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
                     users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier, self.limit)
-                    api_response = self.results_parser.parse_results(users_list, self.key_identifier)
+                    api_response = self.results_parser.parse_results(users_list, self.key_identifier, extended_attributes)
                     users_result = self.merge_users(users_result, api_response, user_group)
 
         for first_dict in users_result:
@@ -389,8 +390,8 @@ class RecordHandler:
 
         self.logger = logger
 
-        OneRosterValueFormatter.encoding = options['string_encoding']
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
+        self.user_identity_type_formatter = OneRosterValueFormatter(options['user_identity_type_format'])
         self.user_email_formatter = OneRosterValueFormatter(options['user_email_format'])
         self.user_username_formatter = OneRosterValueFormatter(options['user_username_format'])
         self.user_domain_formatter = OneRosterValueFormatter(options['user_domain_format'])
@@ -398,16 +399,7 @@ class RecordHandler:
         self.user_surname_formatter = OneRosterValueFormatter(options['user_surname_format'])
         self.user_country_code_formatter = OneRosterValueFormatter(options['user_country_code_format'])
 
-        self.user_attribute_names = []
-        self.user_attribute_names.extend(self.user_given_name_formatter.get_attribute_names())
-        self.user_attribute_names.extend(self.user_surname_formatter.get_attribute_names())
-        self.user_attribute_names.extend(self.user_country_code_formatter.get_attribute_names())
-        self.user_attribute_names.extend(self.user_email_formatter.get_attribute_names())
-        self.user_attribute_names.extend(self.user_username_formatter.get_attribute_names())
-        self.user_attribute_names.extend(self.user_domain_formatter.get_attribute_names())
-
-
-    def parse_results(self, result_set, key_identifier):
+    def parse_results(self, result_set, key_identifier, extended_attributes):
         """
         description: parses through user_list from API calls, to create final user objects
         :type result_set: list(dict())
@@ -419,12 +411,12 @@ class RecordHandler:
         users_dict = dict()
         for user in result_set:
             if user['status'] == 'active':
-                returned_user = self.create_user_object(user, key_identifier)
+                returned_user = self.create_user_object(user, key_identifier, extended_attributes)
                 users_dict[user[key_identifier]] = returned_user
         return users_dict
 
 
-    def create_user_object(self, record, key_identifier):
+    def create_user_object(self, record, key_identifier, extended_attributes):
         """
         description: Using user's API information to construct final user objects
         :type record: dict()
@@ -435,8 +427,7 @@ class RecordHandler:
         """
         key = record.get(key_identifier)
         if key is None:
-            pass
-            #return
+            return
 
         email, last_attribute_name = self.user_email_formatter.generate_value(record)
         email = email.strip() if email else None
@@ -445,12 +436,9 @@ class RecordHandler:
                 self.logger.warning('Skipping user with id %s: empty email attribute (%s)',  key, last_attribute_name)
             #return
 
-
-
         formatted_user = dict()
         source_attributes = dict()
 
-       # record = user_sync.connector.helper.create_blank_user()
 
 
         #       User information available from One-Roster
