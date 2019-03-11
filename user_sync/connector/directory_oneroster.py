@@ -7,7 +7,8 @@
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 #
-# The above copyright notice and this permission notice shall be included in all
+# The above copyright notice and this permission notice shall be included in allls
+
 # copies or substantial portions of the Software.
 #
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -68,20 +69,16 @@ class OneRosterConnector(object):
 
         builder = user_sync.config.OptionsBuilder(caller_config)
         builder.set_string_value('user_identity_type', None)
+        builder.set_string_value('limit', 1000)
+        builder.set_string_value('key_identifier', None)
+        builder.set_string_value('country_code', None)
+        builder.require_string_value('client_id')
+        builder.require_string_value('client_secret')
+        builder.require_string_value('host')
         builder.set_string_value('logger_name', self.name)
         builder.set_string_value('string_encoding', 'utf8')
 
-        # Values from connector-oneroster.yml via builder
-
         self.options = builder.get_options()
-        self.host = builder.require_string_value('host')
-        self.key_identifier = builder.require_string_value('key_identifier')
-        self.limit = builder.require_string_value('limit')
-        if int(self.limit) < 1:
-            raise ValueError("limit must be >= 1")
-        self.country_code = builder.require_string_value('country_code')
-        self.client_id = builder.require_string_value('client_id')
-        self.client_secret = builder.require_string_value('client_secret')
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
         options = builder.get_options()
@@ -98,7 +95,9 @@ class OneRosterConnector(object):
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-        conn = Connection(self.logger, self.host, self.limit, self.client_id, self.client_secret)
+        options = self.options
+
+        conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = {}
 
@@ -107,8 +106,8 @@ class OneRosterConnector(object):
             for group_name in inner_dict:
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
-                    users_list = conn.get_user_list(group_filter, group_name, user_filter, self.key_identifier, self.limit)
-                    api_response = ResultParser.parse_results(users_list, extended_attributes, self.key_identifier)
+                    users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
+                    api_response = ResultParser.parse_results(users_list, extended_attributes, options['key_identifier'])
                     users_result = self.merge_users(users_result, api_response, user_group)
 
         for first_dict in users_result:
@@ -131,7 +130,7 @@ class OneRosterConnector(object):
         """ description: Adds country code and identity_type from yml files to User Record """
 
         user_record['identity_type'] = self.user_identity_type
-        user_record['country'] = self.country_code
+        user_record['country'] = self.options['country_code']
 
     def parse_yml_groups(self, groups_list):
         """
@@ -427,6 +426,11 @@ class ResultParser:
             #Can be found in userIds if needed
             #source_attributes['userId'] = user['userId']
             #source_attributes['type'] = user['type']
+
+            #Wants
+
+            # user['identity_type'] = self.user_identity_type
+            # user['country'] = self.country_code
 
         except:
             raise AssertionException("A key not found in user info object")
