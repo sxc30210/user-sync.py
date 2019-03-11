@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 Adobe Systems Incorporated.  All rights reserved.
+# Copyright (c) 2016-2017 Adobe Inc.  All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,13 +18,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import sys
-
 from setuptools import setup
 
 version_namespace = {}
 with open('user_sync/version.py') as f:
     exec(f.read(), version_namespace)
+
+test_deps = ['mock', 'pytest', 'pytest-cov']
+setup_deps = ['pytest-runner']
 
 setup(name='user-sync',
       version=version_namespace['__version__'],
@@ -52,22 +53,21 @@ setup(name='user-sync',
           'pyldap==2.4.45',
           'PyYAML',
           'six',
-          'umapi-client>=2.10',
+          'umapi-client>=2.11',
       ],
       extras_require={
-          ':sys_platform=="linux" or sys_platform=="linux2"':[
+          ':sys_platform=="linux" or sys_platform=="linux2"': [
               'secretstorage',
               'dbus-python'
           ],
-          ':sys_platform=="win32"':[
+          ':sys_platform=="win32"': [
               'pywin32-ctypes'
-          ]
+          ],
+          'test': test_deps,
+          'setup': setup_deps,
       },
-      setup_requires=['nose>=1.0'],
-      tests_require=[
-          'mock',
-          'nose>=1.0',
-      ],
+      setup_requires=setup_deps,
+      tests_require=test_deps,
       entry_points={
           'console_scripts': [
               'user_sync = user_sync.app:main'

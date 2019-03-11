@@ -68,7 +68,7 @@ class OneRosterConnector(object):
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
 
         builder = user_sync.config.OptionsBuilder(caller_config)
-        builder.set_string_value('user_identity_type', None)
+
         builder.set_string_value('limit', 1000)
         builder.set_string_value('key_identifier', None)
         builder.set_string_value('country_code', None)
@@ -78,14 +78,34 @@ class OneRosterConnector(object):
         builder.set_string_value('logger_name', self.name)
         builder.set_string_value('string_encoding', 'utf8')
 
+        builder.set_string_value('logger_name', self.name)
+        builder.set_string_value('string_encoding', 'utf8')
+
+        builder.set_string_value('user_email_format', six.text_type('{email}'))
+        builder.set_string_value('user_given_name_format', six.text_type('{givenName}'))
+        builder.set_string_value('user_surname_format', six.text_type('{familyName}'))
+        builder.set_string_value('user_country_code_format', six.text_type('{countryCode}'))
+        builder.set_string_value('user_username_format', None)
+        builder.set_string_value('user_domain_format', None)
+        builder.set_string_value('user_identity_type', None)
+        builder.set_string_value('user_identity_type_format', None)
+
+        # Values from connector-oneroster.yml via builder
+
+
         self.options = builder.get_options()
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
         options = builder.get_options()
         self.options = options
         self.logger = logger = user_sync.connector.helper.create_logger(options)
+
         logger.debug('%s initialized with options: %s', self.name, options)
         caller_config.report_unused_values(self.logger)
+
+
+        self.results_parser = RecordHandler(options, logger)
+        
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
@@ -96,6 +116,7 @@ class OneRosterConnector(object):
         :rtype (bool, iterable(dict))
         """
         options = self.options
+        x = options['limit']
 
         conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
         groups_from_yml = self.parse_yml_groups(groups)
@@ -106,8 +127,14 @@ class OneRosterConnector(object):
             for group_name in inner_dict:
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
+
                     users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
-                    api_response = ResultParser.parse_results(users_list, extended_attributes, options['key_identifier'])
+                    rh = RecordHandler(options, logger=None)
+                    api_response = rh.parse_results(users_list, options['key_identifier'], extended_attributes)
+
+                    # users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
+                    # api_response = self.results_parser.parse_results(users_list, options['key_identifier'], extended_attributes)
+
                     users_result = self.merge_users(users_result, api_response, user_group)
 
         for first_dict in users_result:
@@ -136,7 +163,7 @@ class OneRosterConnector(object):
         """
         description: parses group options from user-sync.config file into a nested dict with Key: group_filter for the outter dict, Value: being the nested
         dict {Key: group_name, Value: user_filter}
-        :type groups_list: set(str) from user-sync-config.yml
+        :type groups_list: set(str) from user-sync-config-ldap.yml
         :rtype: iterable(dict)
         """
 
@@ -260,13 +287,6 @@ class Connection:
         :rtype sourced_id: str()
         """
         keys = list()
-        # Not used if using name and title
-        # if group_filter == 'courses':
-        #     esless = group_filter[:-1] + "Code"
-        # elif group_filter == 'classes':
-        #     esless = group_filter[:-2] + "Code"
-        # else:
-        #     esless = 'name'
 
         response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit + '&offset=0')
 
@@ -356,7 +376,6 @@ class Connection:
 
             for ignore, each_class in parsed_json.items():
                 class_key_id = each_class[0][key_identifier]
-                #class_name = each_class['classCode']
                 class_name = each_class[0]['title']
                 class_list[class_name] = class_key_id
 
@@ -369,10 +388,23 @@ class Connection:
         return re.sub(r'(\s)', '', text).lower()
 
 
-class ResultParser:
+class RecordHandler:
 
-    @staticmethod
-    def parse_results(result_set, extended_attributes, key_identifier):
+
+    def __init__(self, options, logger):
+
+        self.logger = logger
+
+        self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
+        self.user_identity_type_formatter = OneRosterValueFormatter(options['user_identity_type_format'])
+        self.user_email_formatter = OneRosterValueFormatter(options['user_email_format'])
+        self.user_username_formatter = OneRosterValueFormatter(options['user_username_format'])
+        self.user_domain_formatter = OneRosterValueFormatter(options['user_domain_format'])
+        self.user_given_name_formatter = OneRosterValueFormatter(options['user_given_name_format'])
+        self.user_surname_formatter = OneRosterValueFormatter(options['user_surname_format'])
+        self.user_country_code_formatter = OneRosterValueFormatter(options['user_country_code_format'])
+
+    def parse_results(self, result_set, key_identifier, extended_attributes):
         """
         description: parses through user_list from API calls, to create final user objects
         :type result_set: list(dict())
@@ -384,45 +416,58 @@ class ResultParser:
         users_dict = dict()
         for user in result_set:
             if user['status'] == 'active':
-                returned_user = ResultParser.create_user_object(user, extended_attributes, key_identifier)
+                returned_user = self.create_user_object(user, key_identifier, extended_attributes)
                 users_dict[user[key_identifier]] = returned_user
         return users_dict
 
-    @staticmethod
-    def create_user_object(user, extended_attributes, key_identifier):
+
+    def create_user_object(self, record, key_identifier, extended_attributes):
         """
         description: Using user's API information to construct final user objects
-        :type user: dict()
+        :type record: dict()
         :type extended_attributes: list(str)
         :type original_group: str()
         :type key_identifier: str()
         :rtype: formatted_user: dict(user object)
         """
+        key = record.get(key_identifier)
+        if key is None:
+            return
+
+        email, last_attribute_name = self.user_email_formatter.generate_value(record)
+        email = email.strip() if email else None
+        if not email:
+            if last_attribute_name is not None:
+                self.logger.warning('Skipping user with id %s: empty email attribute (%s)',  key, last_attribute_name)
+            #return
+
         formatted_user = dict()
         source_attributes = dict()
 
+
+
         #       User information available from One-Roster
         try:
-            source_attributes['sourcedId'] = user['sourcedId']
-            source_attributes['status'] = user['status']
-            source_attributes['dateLastModified'] = user['dateLastModified']
-            source_attributes['username'] = user['username']
-            source_attributes['userIds'] = user['userIds']
-            source_attributes['enabledUser'] = user['enabledUser']
-            source_attributes['givenName'] = formatted_user['firstname'] = user['givenName']
-            source_attributes['familyName'] = formatted_user['lastname'] = user['familyName']
-            source_attributes['middleName'] = user['middleName']
-            source_attributes['role'] = user['role']
-            source_attributes['identifier'] = user['identifier']
-            source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = user['email']
-            source_attributes['sms'] = user['sms']
-            source_attributes['phone'] = user['phone']
-            source_attributes['agents'] = user['agents']
-            source_attributes['orgs'] = user['orgs']
-            source_attributes['grades'] = user['grades']
-            source_attributes['domain'] = formatted_user['domain'] = str(user['email']).split('@')[1]
-            source_attributes['password'] = user['password']
-            source_attributes[key_identifier] = user[key_identifier]
+            source_attributes['sourcedId'] = record['sourcedId']
+            source_attributes['status'] = record['status']
+            source_attributes['dateLastModified'] = record['dateLastModified']
+            source_attributes['username'] = record['username']
+            source_attributes['userIds'] = record['userIds']
+            source_attributes['enabledUser'] = record['enabledUser']
+            source_attributes['givenName'] = formatted_user['firstname'] = record['givenName']
+            source_attributes['familyName'] = formatted_user['lastname'] = record['familyName']
+            source_attributes['middleName'] = record['middleName']
+            source_attributes['role'] = record['role']
+            source_attributes['identifier'] = record['identifier']
+            source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = record['email']
+            source_attributes['sms'] = record['sms']
+            source_attributes['phone'] = record['phone']
+            source_attributes['agents'] = record['agents']
+            source_attributes['orgs'] = record['orgs']
+            source_attributes['grades'] = record['grades']
+            source_attributes['domain'] = formatted_user['domain'] = str(record['email']).split('@')[1]
+            source_attributes['password'] = record['password']
+            source_attributes[key_identifier] = record[key_identifier]
             #Can be found in userIds if needed
             #source_attributes['userId'] = user['userId']
             #source_attributes['type'] = user['type']
@@ -435,11 +480,6 @@ class ResultParser:
         except:
             raise AssertionException("A key not found in user info object")
 
-#       adds any extended_attribute values
-#       from the one-roster user information into the final user object utilized by the UST
-        if extended_attributes is not None:
-            for attribute in extended_attributes:
-                formatted_user[attribute] = user[attribute]
 
         formatted_user['source_attributes'] = source_attributes
         formatted_user['groups'] = set()
@@ -447,7 +487,7 @@ class ResultParser:
         return formatted_user
 
 
-class LDAPValueFormatter(object):
+class OneRosterValueFormatter(object):
     encoding = 'utf8'
 
     def __init__(self, string_format):
@@ -500,9 +540,13 @@ class LDAPValueFormatter(object):
         if attribute_values:
             try:
                 if first_only or len(attribute_values) == 1:
-                    return attribute_values[0].decode(cls.encoding)
+
+                    attr = attribute_values if isinstance(attribute_values, six.string_types) else attribute_values[0]
+                    return attr if isinstance(attr, six.string_types) else attr.decode(cls.encoding)
+
                 else:
-                    return [val.decode(cls.encoding) for val in attribute_values]
+                    return [(val if isinstance(val, six.string_types)
+                             else val.decode(cls.encoding)) for val in attribute_values]
             except UnicodeError as e:
                 raise AssertionException("Encoding error in value of attribute '%s': %s" % (attribute_name, e))
         return None

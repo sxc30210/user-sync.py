@@ -17,8 +17,8 @@ endif
 
 pex:
 	python -m pip install --upgrade pip
-	python -m pip install --upgrade 'wheel<0.30.0' requests pex==1.3.2
-	-$(RM) $(output_dir)/$(output_filename)$(output_file_extension)
+	python -m pip install --upgrade 'wheel<0.30.0' requests pex==1.5.3
+	-$(RM) $(output_dir)
 	pex -v -o $(output_dir)/$(output_filename)$(output_file_extension) -m user_sync.app \
 		-f $(prebuilt_dir) \
 		--disable-cache \

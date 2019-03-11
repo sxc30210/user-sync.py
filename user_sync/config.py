@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 Adobe Systems Incorporated.  All rights reserved.
+# Copyright (c) 2016-2017 Adobe Inc.  All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -90,7 +90,9 @@ class ConfigLoader(object):
         """Merge the invocation option defaults with overrides from the main config and the command line.
         :rtype: dict
         """
-        options = self.invocation_defaults
+        # copy instead of direct assignment to preserve original invocation_defaults object
+        # otherwise, setting options also sets invocation_defaults (same memory ref)
+        options = self.invocation_defaults.copy()
 
         # get overrides from the main config
         invocation_config = self.main_config.get_dict_config('invocation_defaults', True)
@@ -171,8 +173,10 @@ class ConfigLoader(object):
 
         # --users and --adobe-only-user-list conflict with each other, so we need to disambiguate.
         # Argument specifications override configuration options, so you must have one or the other
-        # either as an argument or as a configured default.
-        if self.args['users'] and self.args['adobe_only_user_list']:
+        # either as an argument or as a configured default.  For a complete check, we need to compare against
+        # BOTH the args values AND the options values (in order to catch the invocation defaults).
+        if (self.args['users'] or (options['users'] and options['users'] != self.invocation_defaults['users'])) \
+                and (self.args['adobe_only_user_list'] or options['adobe_only_user_list']):
             # specifying both --users and --adobe-only-user-list is an error
             raise AssertionException('You cannot specify both a --users arg and an --adobe-only-user-list arg')
         elif self.args['users']:
@@ -186,16 +190,12 @@ class ConfigLoader(object):
                 raise AssertionException('You cannot specify --adobe-only-user-list when using "push" strategy')
             users_spec = None
             stray_list_input_path = self.args['adobe_only_user_list']
-        elif options['users'] and options['adobe_only_user_list']:
-            raise AssertionException('You cannot configure both a default "users" option (%s) '
-                                     'and a default "adobe-only-user-list" option (%s)' %
-                                     (' '.join(options['users']), options['adobe_only_user_list']))
-        elif options['users']:
-            users_spec = options['users']
-            stray_list_input_path = None
         elif options['adobe_only_user_list']:
             users_spec = None
             stray_list_input_path = options['adobe_only_user_list']
+        elif options['users']:
+            users_spec = options['users']
+            stray_list_input_path = None            
         else:
             raise AssertionException('You must specify either a "users" option or an "adobe-only-user-list" option.')
 
@@ -238,7 +238,9 @@ class ConfigLoader(object):
                 raise AssertionException('You cannot specify --user-filter when using an adobe-only-user-list')
             self.logger.info("adobe-only-user-list specified, so ignoring default user filter specification")
         else:
-            username_filter_pattern = self.args['user_filter'] or options['user_filter']
+            if self.args['user_filter'] is not None:
+                options['user_filter'] = self.args['user_filter']
+            username_filter_pattern = options['user_filter']
             if username_filter_pattern:
                 try:
                     compiled_expression = re.compile(r'\A' + username_filter_pattern + r'\Z', re.IGNORECASE)
@@ -295,6 +297,8 @@ class ConfigLoader(object):
         """
         :rtype str
         """
+        if self.invocation_options.get('stray_list_input_path', None):
+            return None
         connector_type = self.invocation_options.get('directory_connector_type')
         if connector_type:
             return 'user_sync.connector.directory_' + connector_type
@@ -320,6 +324,10 @@ class ConfigLoader(object):
         """
         options = {}
         connectors_config = self.get_directory_connector_configs()
+
+        if connector_name != 'csv' and connector_name not in connectors_config.value:
+            raise AssertionException("Config file must be specified for connector type :: '{}'".format(connector_name))
+
         if connectors_config is not None:
             connector_item = connectors_config.get_list(connector_name, True)
             options = self.get_dict_from_sources(connector_item)
@@ -442,61 +450,88 @@ class ConfigLoader(object):
 
         # process directory configuration options
         directory_config = self.main_config.get_dict_config('directory_users', True)
-        if directory_config:
-            # account type
-            new_account_type = directory_config.get_string('user_identity_type', True)
-            new_account_type = user_sync.identity_type.parse_identity_type(new_account_type)
-            if new_account_type:
-                options['new_account_type'] = new_account_type
-            else:
-                self.logger.debug("Using default for new_account_type: %s", options['new_account_type'])
-            # country code
-            default_country_code = directory_config.get_string('default_country_code', True)
-            if default_country_code:
-                options['default_country_code'] = default_country_code
+        if not directory_config:
+            raise AssertionException("'directory_users' must be specified")
+
+        # account type
+        new_account_type = directory_config.get_string('user_identity_type', True)
+        new_account_type = user_sync.identity_type.parse_identity_type(new_account_type)
+        if new_account_type:
+            options['new_account_type'] = new_account_type
+        else:
+            self.logger.debug("Using default for new_account_type: %s", options['new_account_type'])
+        # country code
+        default_country_code = directory_config.get_string('default_country_code', True)
+        if default_country_code:
+            options['default_country_code'] = default_country_code
+        additional_groups = directory_config.get_list('additional_groups', True) or []
+        try:
+            additional_groups = [{'source': re.compile(r['source']),
+                                  'target': user_sync.rules.AdobeGroup.create(r['target'], index=False)}
+                                 for r in additional_groups]
+        except Exception as e:
+            raise AssertionException("Additional group rule error: {}".format(str(e)))
+        options['additional_groups'] = additional_groups
+        sync_options = directory_config.get_dict_config('group_sync_options', True)
+        if sync_options:
+            options['auto_create'] = sync_options.get_bool('auto_create', True)
 
         # process exclusion configuration options
         adobe_config = self.main_config.get_dict_config('adobe_users', True)
-        if adobe_config:
-            exclude_identity_type_names = adobe_config.get_list('exclude_identity_types', True)
-            if exclude_identity_type_names:
-                exclude_identity_types = []
-                for name in exclude_identity_type_names:
-                    message_format = 'Illegal value in exclude_identity_types: %s'
-                    identity_type = user_sync.identity_type.parse_identity_type(name, message_format)
-                    exclude_identity_types.append(identity_type)
-                options['exclude_identity_types'] = exclude_identity_types
-            exclude_users_regexps = adobe_config.get_list('exclude_users', True)
-            if exclude_users_regexps:
-                exclude_users = []
-                for regexp in exclude_users_regexps:
-                    try:
-                        # add "match begin" and "match end" markers to ensure complete match
-                        # and compile the patterns because we will use them over and over
-                        exclude_users.append(re.compile(r'\A' + regexp + r'\Z', re.UNICODE))
-                    except re.error as e:
-                        validation_message = ('Illegal regular expression (%s) in %s: %s' %
-                                              (regexp, 'exclude_identity_types', e))
-                        raise AssertionException(validation_message)
-                options['exclude_users'] = exclude_users
-            exclude_group_names = adobe_config.get_list('exclude_adobe_groups', True) or []
-            if exclude_group_names:
-                exclude_groups = []
-                for name in exclude_group_names:
-                    group = user_sync.rules.AdobeGroup.create(name)
-                    if not group or group.get_umapi_name() != user_sync.rules.PRIMARY_UMAPI_NAME:
-                        validation_message = 'Illegal value for %s in config file: %s' % ('exclude_groups', name)
-                        if not group:
-                            validation_message += ' (Not a legal group name)'
-                        else:
-                            validation_message += ' (Can only exclude groups in primary organization)'
-                        raise AssertionException(validation_message)
-                    exclude_groups.append(group.get_group_name())
-                options['exclude_groups'] = exclude_groups
+        if not adobe_config:
+            raise AssertionException("'adobe_users' must be specified")
+
+        exclude_identity_type_names = adobe_config.get_list('exclude_identity_types', True)
+        if exclude_identity_type_names:
+            exclude_identity_types = []
+            for name in exclude_identity_type_names:
+                message_format = 'Illegal value in exclude_identity_types: %s'
+                identity_type = user_sync.identity_type.parse_identity_type(name, message_format)
+                exclude_identity_types.append(identity_type)
+            options['exclude_identity_types'] = exclude_identity_types
+        exclude_users_regexps = adobe_config.get_list('exclude_users', True)
+        if exclude_users_regexps:
+            exclude_users = []
+            for regexp in exclude_users_regexps:
+                try:
+                    # add "match begin" and "match end" markers to ensure complete match
+                    # and compile the patterns because we will use them over and over
+                    exclude_users.append(re.compile(r'\A' + regexp + r'\Z', re.UNICODE))
+                except re.error as e:
+                    validation_message = ('Illegal regular expression (%s) in %s: %s' %
+                                          (regexp, 'exclude_identity_types', e))
+                    raise AssertionException(validation_message)
+            options['exclude_users'] = exclude_users
+        exclude_group_names = adobe_config.get_list('exclude_adobe_groups', True) or []
+        if exclude_group_names:
+            exclude_groups = []
+            for name in exclude_group_names:
+                group = user_sync.rules.AdobeGroup.create(name)
+                if not group or group.get_umapi_name() != user_sync.rules.PRIMARY_UMAPI_NAME:
+                    validation_message = 'Illegal value for %s in config file: %s' % ('exclude_groups', name)
+                    if not group:
+                        validation_message += ' (Not a legal group name)'
+                    else:
+                        validation_message += ' (Can only exclude groups in primary organization)'
+                    raise AssertionException(validation_message)
+                exclude_groups.append(group.get_group_name())
+            options['exclude_groups'] = exclude_groups
 
         # get the limits
         limits_config = self.main_config.get_dict_config('limits')
-        options['max_adobe_only_users'] = limits_config.get_int('max_adobe_only_users')
+        max_missing = limits_config.get_value('max_adobe_only_users',(int, str),False)
+        percent_pattern = re.compile("(\d*(\.\d+)?%)")
+        if isinstance(max_missing, str) and percent_pattern.match(max_missing):
+            max_missing_percent = float(max_missing.strip('%'))
+            if 0.0 <= max_missing_percent <= 100.0:
+                options['max_adobe_only_users'] = max_missing
+            else:
+                raise AssertionException("max_adobe_only_users value must be less or equal than 100%")
+        else:
+            try:
+                options['max_adobe_only_users'] = int(max_missing)
+            except ValueError:
+                raise AssertionException("Unable to parse max_adobe_only_users value. Value must be a percentage or an integer.")
 
         # now get the directory extension, if any
         extension_config = self.get_directory_extension_options()
@@ -1044,7 +1079,7 @@ class OptionsBuilder(object):
     def set_dict_value(self, key, default_value):
         """
         :type key: str
-        :type default_value: dict
+        :type default_value: dict or None
         """
         self.set_value(key, dict, default_value)
 

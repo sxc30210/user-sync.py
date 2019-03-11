@@ -102,3 +102,5 @@ _site
 # Keys
 private.key
 certificate_pub.crt
+
+lockfile

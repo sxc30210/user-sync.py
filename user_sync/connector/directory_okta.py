@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 Adobe Systems Incorporated.  All rights reserved.
+# Copyright (c) 2016-2017 Adobe Inc.  All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -379,7 +379,7 @@ class OKTAValueFormatter(object):
             attribute_values = getattr(record.profile,attribute_name)
             if attribute_values:
                 try:
-                    return attribute_values.decode(cls.encoding)
+                    return attribute_values
                 except UnicodeError as e:
                     raise AssertionException("Encoding error in value of attribute '%s': %s" % (attribute_name, e))
         return None
