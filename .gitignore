@@ -95,8 +95,8 @@ ENV/
 _site
 .sass-cache
 .jekyll-metadata
-test_config/*.key
-test_config/*.crt
+test_config/private.key
+test_config/certificate_pub.crt
 test_config/connector-ldap.yml
 test_config/connector-umapi.yml
 test_config/extension-config.yml
