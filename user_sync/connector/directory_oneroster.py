@@ -197,67 +197,47 @@ class Connection:
             class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
             for each_class in class_list:
                 key_id_classes = class_list[each_class]
-                response_classes = self.oneroster.make_roster_request(self.host_name + 'classes' + '/' + key_id_classes + '/' + user_filter + '?limit=' + limit + '&offset=0')
-                if response_classes.ok is False:
-                    self.logger.warning(
-                        'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
-                        response_classes.text)
-                    return {}
-                for ignore3, users3 in json.loads(response_classes.content).items():
-                    parsed_json_list.extend(users3)
-                while self.is_last_call_to_make(response_classes) is False:
-                    response_classes = self.oneroster.make_roster_request(response_classes.headers._store['next'][1])
-                    if response_classes.ok is not True:
+                key = 'first'
+                while key is not None:
+                    response = self.oneroster.make_roster_request(
+                        self.host_name + 'classes/' + key_id_classes + '/' + user_filter + '?limit=' + limit + '&offset=0') if key == 'first' \
+                        else self.oneroster.make_roster_request(response.links[key]['url'])
+                    if response.ok is False:
+                        self.logger.warning(
+                            'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
+                            response.text)
+                        return {}
+
+                    for ignore, users in json.loads(response.content).items():
+                        parsed_json_list.extend(users)
+                    if key == 'last':
                         break
-                    parsed_json_list.extend(json.loads(response_classes.content))
+                    key = 'next' if 'next' in response.links else 'last'
 
         else:
             try:
 
                 key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
-                response = self.oneroster.make_roster_request(self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0')
-                if response.ok is False:
-                    self.logger.warning(
-                        'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
-                        response.text)
-                    return {}
+                key = 'first'
+                while key is not None:
+                    response = self.oneroster.make_roster_request(self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0') if key == 'first' else self.oneroster.make_roster_request(response.links[key]['url'])
+                    if response.ok is False:
+                        self.logger.warning(
+                            'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
+                            response.text)
+                        return {}
 
-                for ignore, users in json.loads(response.content).items():
-                    parsed_json_list.extend(users)
-
-                while self.is_last_call_to_make(response) is False:
-                    response = self.oneroster.make_roster_request(response.links['next']['url'])
-                    if response.ok is not True:
+                    for ignore, users in json.loads(response.content).items():
+                        parsed_json_list.extend(users)
+                    if key == 'last':
                         break
-                    for ignore2, users2 in json.loads(response.content).items():
-                        parsed_json_list.extend(users2)
+                    key = 'next' if 'next' in response.links else 'last'
 
             except ValueError as e:
                 self.logger.warning(e)
                 return {}
 
         return parsed_json_list
-
-    def is_last_call_to_make(self, response):
-        """
-        handles pagination
-        :type response: dict() response from url call
-        :rType: boolean:
-        """
-
-        try:
-            if response.links['next']['url'] is not None:
-                return False
-        except:
-            return True
-
-        returned_result_count = response.headers._store['x-count'][1]
-        if int(returned_result_count) < int(self.limit):
-            return True
-        else:
-            return False
-
-
 
     def get_key_identifier(self, group_filter, group_name, key_identifier, limit):
         """
@@ -269,58 +249,33 @@ class Connection:
         :rtype sourced_id: str()
         """
         keys = list()
-
-        response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit + '&offset=0')
-
-        if response.status_code is not 200:
-            raise ValueError('Non Successful Response'
-                             + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
-        parsed_json = json.loads(response.content)
-        if self.is_last_call_to_make(response) is True:
-            if group_filter == 'schools':
-                name_identifier = 'name'
-                revised_key = 'orgs'
-            else:
-                name_identifier = 'title'
-                revised_key = group_filter
-            try:
-                for each_class in parsed_json.get(revised_key):
-                    if self.encode_str(each_class[name_identifier]) == self.encode_str(group_name):
-                        try:
-                            key_id = each_class[key_identifier]
-                        except:
-                            raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
-                        keys.append(key_id)
-                        break
-            except:
-                raise AssertionException("response list key mismatch" + "for" + revised_key)
-        while self.is_last_call_to_make(response) is False:
-            if group_filter == 'schools':
-                name_identifier = 'name'
-                revised_key = 'orgs'
-            else:
-                name_identifier = 'title'
-                revised_key = group_filter
+        if group_filter == 'schools':
+            name_identifier = 'name'
+            revised_key = 'orgs'
+        else:
+            name_identifier = 'title'
+            revised_key = group_filter
+        key = 'first'
+        while key is not None:
+            response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit + '&offset=0') if key == 'first' \
+                else self.oneroster.make_roster_request(response.links[key]['url'])
+            if response.status_code is not 200:
+                raise ValueError('Non Successful Response'
+                                 + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
             parsed_json = json.loads(response.content)
-            for each in parsed_json.get(revised_key):
-                if self.encode_str(each[name_identifier]) == self.encode_str(group_name):
-                    try:
-                        key_id = each[key_identifier]
-                        keys.append(key_id)
-                        return keys[0]
-                    except:
-                        raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
 
-            response = self.oneroster.make_roster_request(response.links['next']['url'])
-        parsed_json = json.loads(response.content)
-        for each in parsed_json.get(revised_key):
-            if self.encode_str(each[name_identifier]) == self.encode_str(group_name):
-                try:
-                    key_id = each[key_identifier]
+            for each_class in parsed_json.get(revised_key):
+                if self.encode_str(each_class[name_identifier]) == self.encode_str(group_name):
+                    try:
+                        key_id = each_class[key_identifier]
+                    except ValueError:
+                        raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
                     keys.append(key_id)
                     return keys[0]
-                except:
-                    raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
+
+            if key == 'last':
+                break
+            key = 'next' if 'next' in response.links else 'last'
 
         if len(keys) == 0:
             raise ValueError('No key ids found for: ' + " " + group_filter + ":" + " " + group_name)
@@ -341,25 +296,26 @@ class Connection:
         class_list = dict()
         try:
             key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
-            response = self.oneroster.make_roster_request(self.host_name + 'courses' + '/' + key_id + '/' + 'classes' + '?limit=' + limit + '&offset=0')
+            key = 'first'
+            while key is not None:
+                response = self.oneroster.make_roster_request(self.host_name + 'courses' + '/' + key_id + '/' + 'classes' + '?limit=' + limit + '&offset=0') if key == 'first' \
+                    else self.oneroster.make_roster_request(response.links[key]['url'])
 
-            if response.ok is not True:
-                status = response.status_code
-                message = response.reason
-                raise ValueError('Non Successful Response'
-                                 + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
-            parsed_json = json.loads(response.content)
-
-            while self.is_last_call_to_make(response) is False:
-                response = self.oneroster.make_roster_request(response.headers._store['next'][1])
                 if response.ok is not True:
-                    break
-                parsed_json.extend(json.loads(response.content))
+                    status = response.status_code
+                    message = response.reason
+                    raise ValueError('Non Successful Response'
+                                     + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
+                parsed_json = json.loads(response.content)
 
-            for ignore, each_class in parsed_json.items():
-                class_key_id = each_class[0][key_identifier]
-                class_name = each_class[0]['title']
-                class_list[class_name] = class_key_id
+                for ignore, each_class in parsed_json.items():
+                    class_key_id = each_class[0][key_identifier]
+                    class_name = each_class[0]['title']
+                    class_list[class_name] = class_key_id
+
+                if key == 'last':
+                    break
+                key = 'next' if 'next' in response.links else 'last'
 
         except ValueError as e:
             self.logger.warning(e)
@@ -371,7 +327,6 @@ class Connection:
 
 
 class RecordHandler:
-
 
     def __init__(self, options, logger):
 
@@ -422,13 +377,11 @@ class RecordHandler:
         if not email:
             if last_attribute_name is not None:
                 self.logger.warning('Skipping user with id %s: empty email attribute (%s)',  key, last_attribute_name)
-            #return
 
         formatted_user = dict()
         source_attributes = dict()
 
         #       User information available from One-Roster
-
         source_attributes['sourcedId'] = record['sourcedId']
         source_attributes['status'] = record['status']
         source_attributes['dateLastModified'] = record['dateLastModified']
