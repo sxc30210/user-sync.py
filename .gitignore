@@ -3,10 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-
-venv*
-
-
+# C extensions
+*.so
 
 # Distribution / packaging
 .Python
@@ -81,7 +79,6 @@ celerybeat-schedule
 .env
 
 # virtualenv
-
 venv/
 ENV/
 
@@ -98,9 +95,11 @@ ENV/
 _site
 .sass-cache
 .jekyll-metadata
+test_config/*.key
+test_config/*.crt
+test_config/connector-ldap.yml
+test_config/connector-ldap.yml
+test_config/connector-umapi.yml
+test_config/extension-config.yml
+test_config/logs/
 
-# Keys
-private.key
-certificate_pub.crt
-
-lockfile
