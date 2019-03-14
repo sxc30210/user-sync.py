@@ -68,19 +68,16 @@ class OneRosterConnector(object):
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
 
         builder = user_sync.config.OptionsBuilder(caller_config)
-
         builder.set_string_value('limit', 1000)
-        builder.set_string_value('key_identifier', None)
+        builder.set_string_value('key_identifier', 'sourcedId')
         builder.set_string_value('country_code', None)
         builder.require_string_value('client_id')
         builder.require_string_value('client_secret')
         builder.require_string_value('host')
         builder.set_string_value('logger_name', self.name)
         builder.set_string_value('string_encoding', 'utf8')
-
         builder.set_string_value('logger_name', self.name)
         builder.set_string_value('string_encoding', 'utf8')
-
         builder.set_string_value('user_email_format', six.text_type('{email}'))
         builder.set_string_value('user_given_name_format', six.text_type('{givenName}'))
         builder.set_string_value('user_surname_format', six.text_type('{familyName}'))
@@ -89,9 +86,6 @@ class OneRosterConnector(object):
         builder.set_string_value('user_domain_format', None)
         builder.set_string_value('user_identity_type', None)
         builder.set_string_value('user_identity_type_format', None)
-
-        # Values from connector-oneroster.yml via builder
-
 
         self.options = builder.get_options()
         self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
@@ -103,9 +97,7 @@ class OneRosterConnector(object):
         logger.debug('%s initialized with options: %s', self.name, options)
         caller_config.report_unused_values(self.logger)
 
-
         self.results_parser = RecordHandler(options, logger)
-        
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
@@ -116,7 +108,6 @@ class OneRosterConnector(object):
         :rtype (bool, iterable(dict))
         """
         options = self.options
-        x = options['limit']
 
         conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
         groups_from_yml = self.parse_yml_groups(groups)
@@ -131,15 +122,12 @@ class OneRosterConnector(object):
                     users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
                     rh = RecordHandler(options, logger=None)
                     api_response = rh.parse_results(users_list, options['key_identifier'], extended_attributes)
+                    #api_response = RecordHandler.parse_results(options, users_list, options['key_identifier'], extended_attributes)
 
                     # users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
                     # api_response = self.results_parser.parse_results(users_list, options['key_identifier'], extended_attributes)
 
                     users_result = self.merge_users(users_result, api_response, user_group)
-
-        for first_dict in users_result:
-            values = users_result[first_dict]
-            self.convert_user(values)
 
         return six.itervalues(users_result)
 
@@ -152,12 +140,6 @@ class OneRosterConnector(object):
             (user_list[uid]['groups']).add(group_name)
 
         return user_list
-
-    def convert_user(self, user_record):
-        """ description: Adds country code and identity_type from yml files to User Record """
-
-        user_record['identity_type'] = self.user_identity_type
-        user_record['country'] = self.options['country_code']
 
     def parse_yml_groups(self, groups_list):
         """
@@ -394,6 +376,7 @@ class RecordHandler:
     def __init__(self, options, logger):
 
         self.logger = logger
+        self.country_code = options['country_code']
 
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
         self.user_identity_type_formatter = OneRosterValueFormatter(options['user_identity_type_format'])
@@ -444,42 +427,33 @@ class RecordHandler:
         formatted_user = dict()
         source_attributes = dict()
 
-
-
         #       User information available from One-Roster
-        try:
-            source_attributes['sourcedId'] = record['sourcedId']
-            source_attributes['status'] = record['status']
-            source_attributes['dateLastModified'] = record['dateLastModified']
-            source_attributes['username'] = record['username']
-            source_attributes['userIds'] = record['userIds']
-            source_attributes['enabledUser'] = record['enabledUser']
-            source_attributes['givenName'] = formatted_user['firstname'] = record['givenName']
-            source_attributes['familyName'] = formatted_user['lastname'] = record['familyName']
-            source_attributes['middleName'] = record['middleName']
-            source_attributes['role'] = record['role']
-            source_attributes['identifier'] = record['identifier']
-            source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = record['email']
-            source_attributes['sms'] = record['sms']
-            source_attributes['phone'] = record['phone']
-            source_attributes['agents'] = record['agents']
-            source_attributes['orgs'] = record['orgs']
-            source_attributes['grades'] = record['grades']
-            source_attributes['domain'] = formatted_user['domain'] = str(record['email']).split('@')[1]
-            source_attributes['password'] = record['password']
-            source_attributes[key_identifier] = record[key_identifier]
-            #Can be found in userIds if needed
-            #source_attributes['userId'] = user['userId']
-            #source_attributes['type'] = user['type']
 
-            #Wants
-
-            # user['identity_type'] = self.user_identity_type
-            # user['country'] = self.country_code
-
-        except:
-            raise AssertionException("A key not found in user info object")
-
+        source_attributes['sourcedId'] = record['sourcedId']
+        source_attributes['status'] = record['status']
+        source_attributes['dateLastModified'] = record['dateLastModified']
+        source_attributes['username'] = record['username']
+        source_attributes['userIds'] = record['userIds']
+        source_attributes['enabledUser'] = record['enabledUser']
+        source_attributes['givenName'] = formatted_user['firstname'] = record['givenName']
+        source_attributes['familyName'] = formatted_user['lastname'] = record['familyName']
+        source_attributes['middleName'] = record['middleName']
+        source_attributes['role'] = record['role']
+        source_attributes['identifier'] = record['identifier']
+        source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = record['email']
+        source_attributes['sms'] = record['sms']
+        source_attributes['phone'] = record['phone']
+        source_attributes['agents'] = record['agents']
+        source_attributes['orgs'] = record['orgs']
+        source_attributes['grades'] = record['grades']
+        source_attributes['domain'] = formatted_user['domain'] = str(record['email']).split('@')[1]
+        source_attributes['password'] = record['password']
+        source_attributes[key_identifier] = record[key_identifier]
+        formatted_user['country'] = self.country_code
+        formatted_user['identity_type'] = self.user_identity_type
+        #Can be found in userIds if needed
+        #source_attributes['userId'] = user['userId']
+        #source_attributes['type'] = user['type']
 
         formatted_user['source_attributes'] = source_attributes
         formatted_user['groups'] = set()
