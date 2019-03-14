@@ -98,7 +98,6 @@ _site
 test_config/*.key
 test_config/*.crt
 test_config/connector-ldap.yml
-test_config/connector-ldap.yml
 test_config/connector-umapi.yml
 test_config/extension-config.yml
 test_config/logs/
