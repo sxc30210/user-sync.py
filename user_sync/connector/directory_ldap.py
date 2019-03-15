@@ -23,7 +23,6 @@ import string
 
 import ldap.controls.libldap
 
-
 import user_sync.config
 import user_sync.connector.helper
 import user_sync.error
