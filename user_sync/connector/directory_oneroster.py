@@ -111,6 +111,7 @@ class OneRosterConnector(object):
         rh = RecordHandler(options, logger=None)
 
         conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
+        rh = RecordHandler(options, logger=None)
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = {}
 
@@ -226,7 +227,7 @@ class Connection:
 
                     for ignore, users in json.loads(response.content).items():
                         parsed_json_list.extend(users)
-                    if key == 'last':
+                    if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
 
