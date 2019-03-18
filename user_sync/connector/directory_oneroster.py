@@ -108,7 +108,7 @@ class OneRosterConnector(object):
         :rtype (bool, iterable(dict))
         """
         options = self.options
-        rh = RecordHandler(options, logger=None)
+        rh = RecordHandler(options, logger=self.logger)
 
         conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
         rh = RecordHandler(options, logger=None)
@@ -125,13 +125,13 @@ class OneRosterConnector(object):
                     api_response = rh.parse_results(users_list, options['key_identifier'], extended_attributes)
 
                     #users_result = self.merge_users(users_list, api_response, user_group)
-                    users_result = self.merge_users(api_response, users_list ,user_group)
+                    users_result = self.merge_users(users_result, api_response, user_group)
 
         return six.itervalues(users_result)
 
     def merge_users(self, user_list, new_users, group_name):
 
-        for uid in user_list:
+        for uid in new_users:
             if uid not in user_list:
                 user_list[uid] = new_users[uid]
 
@@ -366,6 +366,8 @@ class RecordHandler:
         :type key_identifier: str()
         :rtype: formatted_user: dict(user object)
         """
+        attribute_warning = "No %s attribute (%s) for user with key: %s, defaulting to %s"
+
         key = record.get(key_identifier)
         if key is None or record.get('status') != 'active':
             return
@@ -383,8 +385,7 @@ class RecordHandler:
 
         identity_type, last_attribute_name = self.user_identity_type_formatter.generate_value(record)
         if last_attribute_name and not identity_type:
-            self.logger.warning('No identity_type attribute (%s) for user with dn: %s, defaulting to %s',
-                                last_attribute_name, self.user_identity_type)
+            self.logger.warning(attribute_warning, 'identity_type', last_attribute_name, key, self.user_identity_type)
         source_attributes['identity_type'] = identity_type
         if not identity_type:
             user['identity_type'] = self.user_identity_type
@@ -392,7 +393,7 @@ class RecordHandler:
             try:
                 user['identity_type'] = user_sync.identity_type.parse_identity_type(identity_type)
             except AssertionException as e:
-                self.logger.warning('Skipping user with dn %s: %s', e)
+                self.logger.warning('Skipping user with key %s: %s', e, key)
 
         username, last_attribute_name = self.user_username_formatter.generate_value(record)
         username = username.strip() if username else None
@@ -401,8 +402,7 @@ class RecordHandler:
             user['username'] = username
         else:
             if last_attribute_name:
-                self.logger.warning('No username attribute (%s) for user with dn: %s, default to email (%s)',
-                                    last_attribute_name, email)
+                self.logger.warning(attribute_warning, 'identity_type', last_attribute_name, email, key)
             user['username'] = email
 
         domain, last_attribute_name = self.user_domain_formatter.generate_value(record)
@@ -413,20 +413,20 @@ class RecordHandler:
         elif username != email:
             user['domain'] = email[email.find('@') + 1:]
         elif last_attribute_name:
-            self.logger.warning('No domain attribute (%s) for user with dn: %s', last_attribute_name)
+            self.logger.warning('No domain attribute (%s) for user with dn: %s', last_attribute_name, key)
 
         given_name_value, last_attribute_name = self.user_given_name_formatter.generate_value(record)
         source_attributes['givenName'] = given_name_value
         if given_name_value is not None:
             user['firstname'] = given_name_value
         elif last_attribute_name:
-            self.logger.warning('No given name attribute (%s) for user with dn: %s', last_attribute_name)
+            self.logger.warning('No given name attribute (%s) for user with dn: %s', last_attribute_name, key)
         sn_value, last_attribute_name = self.user_surname_formatter.generate_value(record)
         source_attributes['familyName'] = sn_value
         if sn_value is not None:
             user['lastname'] = sn_value
         elif last_attribute_name:
-            self.logger.warning('No surname attribute (%s) for user with dn: %s', last_attribute_name)
+            self.logger.warning('No surname attribute (%s) for user with dn: %s', last_attribute_name, key)
         c_value, last_attribute_name = self.user_country_code_formatter.generate_value(record)
         source_attributes['country'] = c_value
         if c_value is not None:
@@ -437,7 +437,6 @@ class RecordHandler:
             self.logger.warning('No country code attribute (%s) for user with dn: %s', last_attribute_name)
 
         user['groups'] = set()
-        #user['member_groups'] = self.get_member_groups(record) if self.additional_group_filters else []
 
         if extended_attributes is not None:
             for extended_attribute in extended_attributes:
@@ -445,41 +444,6 @@ class RecordHandler:
                 source_attributes[extended_attribute] = extended_attribute_value
 
         user['source_attributes'] = source_attributes.copy()
-        # if 'groups' not in user:
-        #     user['groups'] = []
-        # self.user_by_dn[dn] = user
-
-        #       User information available from One-Roster
-        # source_attributes['sourcedId'] = record['sourcedId']
-        # source_attributes['status'] = record['status']
-        # source_attributes['dateLastModified'] = record['dateLastModified']
-        # source_attributes['username'] = record['username']
-        # source_attributes['userIds'] = record['userIds']
-        # source_attributes['enabledUser'] = record['enabledUser']
-        # source_attributes['givenName'] = formatted_user['firstname'] = record['givenName']
-        # source_attributes['familyName'] = formatted_user['lastname'] = record['familyName']
-        # source_attributes['middleName'] = record['middleName']
-        # source_attributes['role'] = record['role']
-        # source_attributes['identifier'] = record['identifier']
-        # source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = record['email']
-        # source_attributes['sms'] = record['sms']
-        # source_attributes['phone'] = record['phone']
-        # source_attributes['agents'] = record['agents']
-        # source_attributes['orgs'] = record['orgs']
-        # source_attributes['grades'] = record['grades']
-        # source_attributes['domain'] = formatted_user['domain'] = str(record['email']).split('@')[1]
-        # source_attributes['password'] = record['password']
-        # source_attributes[key_identifier] = record[key_identifier]
-        # formatted_user['country'] = self.country_code
-        # formatted_user['identity_type'] = self.user_identity_type
-        # #Can be found in userIds if needed
-        # #source_attributes['userId'] = user['userId']
-        # #source_attributes['type'] = user['type']
-        #
-        # formatted_user['source_attributes'] = source_attributes
-        # formatted_user['groups'] = set()
-        #
-        # return formatted_user
 
         return user
 
