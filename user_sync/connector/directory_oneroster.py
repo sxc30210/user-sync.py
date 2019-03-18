@@ -108,10 +108,10 @@ class OneRosterConnector(object):
         :rtype (bool, iterable(dict))
         """
         options = self.options
+        
         rh = RecordHandler(options, logger=self.logger)
-
         conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
-        rh = RecordHandler(options, logger=None)
+
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = {}
 
@@ -124,7 +124,6 @@ class OneRosterConnector(object):
                     users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
                     api_response = rh.parse_results(users_list, options['key_identifier'], extended_attributes)
 
-                    #users_result = self.merge_users(users_list, api_response, user_group)
                     users_result = self.merge_users(users_result, api_response, user_group)
 
         return six.itervalues(users_result)
@@ -147,7 +146,7 @@ class OneRosterConnector(object):
         :rtype: iterable(dict)
         """
 
-        full_dict = dict()
+        full_dict = {}
 
         for text in groups_list:
             try:
@@ -189,7 +188,7 @@ class Connection:
         :type limit: str()
         :rtype parsed_json_list: list(str)
         """
-        parsed_json_list = list()
+        parsed_json_list = []
 
         if group_filter == 'courses':
             class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
@@ -246,7 +245,7 @@ class Connection:
         :type limit: str()
         :rtype sourced_id: str()
         """
-        keys = list()
+        keys = []
         if group_filter == 'schools':
             name_identifier = 'name'
             revised_key = 'orgs'
@@ -291,7 +290,7 @@ class Connection:
         :rtype class_list: list(str)
         """
 
-        class_list = dict()
+        class_list = {}
         try:
             key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
             key = 'first'
@@ -349,7 +348,7 @@ class RecordHandler:
         :type key_identifier: str()
         :rtype users_dict: dict(constructed user objects)
         """
-        users_dict = dict()
+        users_dict = {}
         for user in result_set:
             returned_user = self.create_user_object(user, key_identifier, extended_attributes)
             if returned_user is not None:
