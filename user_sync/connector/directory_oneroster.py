@@ -110,6 +110,7 @@ class OneRosterConnector(object):
         options = self.options
 
         conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
+        rh = RecordHandler(options, logger=None)
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = {}
 
@@ -120,7 +121,7 @@ class OneRosterConnector(object):
                     user_filter = inner_dict[group_name][user_group]
 
                     users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
-                    rh = RecordHandler(options, logger=None)
+
                     api_response = rh.parse_results(users_list, options['key_identifier'], extended_attributes)
                     #api_response = RecordHandler.parse_results(options, users_list, options['key_identifier'], extended_attributes)
 
@@ -210,7 +211,7 @@ class Connection:
 
                     for ignore, users in json.loads(response.content).items():
                         parsed_json_list.extend(users)
-                    if key == 'last':
+                    if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
 
@@ -229,7 +230,7 @@ class Connection:
 
                     for ignore, users in json.loads(response.content).items():
                         parsed_json_list.extend(users)
-                    if key == 'last':
+                    if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
 
