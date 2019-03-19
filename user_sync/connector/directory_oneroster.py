@@ -88,7 +88,6 @@ class OneRosterConnector(object):
         self.logger = user_sync.connector.helper.create_logger(self.options)
         caller_config.report_unused_values(self.logger)
         self.logger.debug('%s initialized with options: %s', self.name, self.options)
-        self.results_parser = RecordHandler(self.options, self.logger)
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
@@ -101,7 +100,7 @@ class OneRosterConnector(object):
         options = self.options
         
         rh = RecordHandler(options, logger=self.logger)
-        conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
+        conn = Connection(self.logger, self.options)
 
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = {}
@@ -161,13 +160,13 @@ class OneRosterConnector(object):
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""
 
-    def __init__(self, logger, host_name=None, limit='100', client_id=None, client_secret=None):
-        self.host_name = host_name
+    def __init__(self, logger, options):
         self.logger = logger
-        self.limit = limit
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.oneroster = OneRoster(client_id, client_secret)
+        self.host_name = options['host']
+        self.limit = options['limit']
+        self.client_id = options['client_id']
+        self.client_secret = options['client_secret']
+        self.oneroster = OneRoster(self.client_id, self.client_secret)
 
     def get_user_list(self, group_filter, group_name, user_filter, key_identifier, limit):
         """
