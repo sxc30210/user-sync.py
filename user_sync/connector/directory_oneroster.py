@@ -64,19 +64,16 @@ class OneRosterConnector(object):
 
     def __init__(self, caller_options):
 
-        # Get the configuration information and apply data from YAML
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
 
         builder = user_sync.config.OptionsBuilder(caller_config)
-        builder.set_string_value('limit', 1000)
-        builder.set_string_value('key_identifier', 'sourcedId')
-        builder.set_string_value('country_code', None)
         builder.require_string_value('client_id')
         builder.require_string_value('client_secret')
         builder.require_string_value('host')
+        builder.set_string_value('limit', 1000)
+        builder.set_string_value('key_identifier', 'sourcedId')
         builder.set_string_value('logger_name', self.name)
-        builder.set_string_value('string_encoding', 'utf8')
-        builder.set_string_value('logger_name', self.name)
+        builder.set_string_value('country_code', None)
         builder.set_string_value('string_encoding', 'utf8')
         builder.set_string_value('user_email_format', six.text_type('{email}'))
         builder.set_string_value('user_given_name_format', six.text_type('{givenName}'))
@@ -88,16 +85,10 @@ class OneRosterConnector(object):
         builder.set_string_value('user_identity_type_format', None)
 
         self.options = builder.get_options()
-        self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
-        options = builder.get_options()
-        self.options = options
-        self.logger = logger = user_sync.connector.helper.create_logger(options)
-
-        logger.debug('%s initialized with options: %s', self.name, options)
         caller_config.report_unused_values(self.logger)
-
-        self.results_parser = RecordHandler(options, logger)
+        self.logger.debug('%s initialized with options: %s', self.name, self.options)
+        self.results_parser = RecordHandler(self.options, self.logger)
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
