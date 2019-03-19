@@ -39,14 +39,11 @@ def connector_metadata():
     }
     return metadata
 
-
 def connector_initialize(options):
     """
     :type options: dict
     """
-    state = OneRosterConnector(options)
-    return state
-
+    return OneRosterConnector(options)
 
 def connector_load_users_and_groups(state, groups=None, extended_attributes=None, all_users=True):
     """
