@@ -39,14 +39,11 @@ def connector_metadata():
     }
     return metadata
 
-
 def connector_initialize(options):
     """
     :type options: dict
     """
-    state = OneRosterConnector(options)
-    return state
-
+    return OneRosterConnector(options)
 
 def connector_load_users_and_groups(state, groups=None, extended_attributes=None, all_users=True):
     """
@@ -64,19 +61,16 @@ class OneRosterConnector(object):
 
     def __init__(self, caller_options):
 
-        # Get the configuration information and apply data from YAML
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
 
         builder = user_sync.config.OptionsBuilder(caller_config)
-        builder.set_string_value('limit', 1000)
-        builder.set_string_value('key_identifier', 'sourcedId')
-        builder.set_string_value('country_code', None)
         builder.require_string_value('client_id')
         builder.require_string_value('client_secret')
         builder.require_string_value('host')
+        builder.set_string_value('limit', 1000)
+        builder.set_string_value('key_identifier', 'sourcedId')
         builder.set_string_value('logger_name', self.name)
-        builder.set_string_value('string_encoding', 'utf8')
-        builder.set_string_value('logger_name', self.name)
+        builder.set_string_value('country_code', None)
         builder.set_string_value('string_encoding', 'utf8')
         builder.set_string_value('user_email_format', six.text_type('{email}'))
         builder.set_string_value('user_given_name_format', six.text_type('{givenName}'))
@@ -88,16 +82,9 @@ class OneRosterConnector(object):
         builder.set_string_value('user_identity_type_format', None)
 
         self.options = builder.get_options()
-        self.user_identity_type = user_sync.identity_type.parse_identity_type(self.options['user_identity_type'])
         self.logger = user_sync.connector.helper.create_logger(self.options)
-        options = builder.get_options()
-        self.options = options
-        self.logger = logger = user_sync.connector.helper.create_logger(options)
-
-        logger.debug('%s initialized with options: %s', self.name, options)
         caller_config.report_unused_values(self.logger)
-
-        self.results_parser = RecordHandler(options, logger)
+        self.logger.debug('%s initialized with options: %s', self.name, self.options)
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
@@ -107,13 +94,12 @@ class OneRosterConnector(object):
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-        options = self.options
         
-        rh = RecordHandler(options, logger=self.logger)
-        conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
+        rh = RecordHandler(self.options, logger=self.logger)
+        conn = Connection(self.logger, self.options)
 
         groups_from_yml = self.parse_yml_groups(groups)
-        users_result = {}
+        users_by_key = {}
 
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
@@ -121,22 +107,14 @@ class OneRosterConnector(object):
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
 
-                    users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
-                    api_response = rh.parse_results(users_list, options['key_identifier'], extended_attributes)
+                    response = conn.get_user_list(group_filter, group_name, user_filter, self.options['key_identifier'], self.options['limit'])
+                    new_users_by_key = rh.parse_results(response, self.options['key_identifier'], extended_attributes)
 
-                    users_result = self.merge_users(users_result, api_response, user_group)
+                    for k, v in six.iteritems(new_users_by_key):
+                        if k not in users_by_key: users_by_key[k] = v
+                        users_by_key[k]['groups'].add(user_group)
 
-        return six.itervalues(users_result)
-
-    def merge_users(self, user_list, new_users, group_name):
-
-        for uid in new_users:
-            if uid not in user_list:
-                user_list[uid] = new_users[uid]
-
-            (user_list[uid]['groups']).add(group_name)
-
-        return user_list
+        return six.itervalues(users_by_key)
 
     def parse_yml_groups(self, groups_list):
         """
@@ -170,13 +148,13 @@ class OneRosterConnector(object):
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""
 
-    def __init__(self, logger, host_name=None, limit='100', client_id=None, client_secret=None):
-        self.host_name = host_name
+    def __init__(self, logger, options):
         self.logger = logger
-        self.limit = limit
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.oneroster = OneRoster(client_id, client_secret)
+        self.host_name = options['host']
+        self.limit = options['limit']
+        self.client_id = options['client_id']
+        self.client_secret = options['client_secret']
+        self.oneroster = OneRoster(self.client_id, self.client_secret)
 
     def get_user_list(self, group_filter, group_name, user_filter, key_identifier, limit):
         """
@@ -217,7 +195,12 @@ class Connection:
                 key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
                 key = 'first'
                 while key is not None:
-                    response = self.oneroster.make_roster_request(self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0') if key == 'first' else self.oneroster.make_roster_request(response.links[key]['url'])
+                    if key == 'first':
+                        call = self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0'
+                    else:
+                        call = response.links[key]['url']
+
+                    response = self.oneroster.make_roster_request(call)
                     if response.ok is False:
                         self.logger.warning(
                             'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +

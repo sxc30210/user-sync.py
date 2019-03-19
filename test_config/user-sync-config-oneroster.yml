@@ -305,7 +305,7 @@ logging:
   # (optional) console_log_level (default value "info")
   # This determines the detail level of the information logged to standard output.
   # See the description of file_log_level for details of the allowed values.
-  console_log_level: info
+  console_log_level: debug
 
 # The invocation_defaults section controls the default values used
 # for command-line arguments.  (Of course, these cannot be used to
