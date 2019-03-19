@@ -62,7 +62,6 @@ class OneRosterConnector(object):
     def __init__(self, caller_options):
 
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
-
         builder = user_sync.config.OptionsBuilder(caller_config)
         builder.require_string_value('client_id')
         builder.require_string_value('client_secret')
