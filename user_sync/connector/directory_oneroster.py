@@ -94,13 +94,12 @@ class OneRosterConnector(object):
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-        options = self.options
         
-        rh = RecordHandler(options, logger=self.logger)
+        rh = RecordHandler(self.options, logger=self.logger)
         conn = Connection(self.logger, self.options)
 
         groups_from_yml = self.parse_yml_groups(groups)
-        users_result = {}
+        users_by_key = {}
 
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
@@ -108,22 +107,14 @@ class OneRosterConnector(object):
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
 
-                    users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
-                    api_response = rh.parse_results(users_list, options['key_identifier'], extended_attributes)
+                    response = conn.get_user_list(group_filter, group_name, user_filter, self.options['key_identifier'], self.options['limit'])
+                    new_users_by_key = rh.parse_results(response, self.options['key_identifier'], extended_attributes)
 
-                    users_result = self.merge_users(users_result, api_response, user_group)
+                    for k, v in six.iteritems(new_users_by_key):
+                        if k not in users_by_key: users_by_key[k] = v
+                        users_by_key[k]['groups'].add(user_group)
 
-        return six.itervalues(users_result)
-
-    def merge_users(self, user_list, new_users, group_name):
-
-        for uid in new_users:
-            if uid not in user_list:
-                user_list[uid] = new_users[uid]
-
-            (user_list[uid]['groups']).add(group_name)
-
-        return user_list
+        return six.itervalues(users_by_key)
 
     def parse_yml_groups(self, groups_list):
         """
