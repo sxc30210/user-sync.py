@@ -108,8 +108,10 @@ class OneRosterConnector(object):
         :rtype (bool, iterable(dict))
         """
         options = self.options
-
+        
+        rh = RecordHandler(options, logger=self.logger)
         conn = Connection(self.logger, options['host'], options['limit'], options['client_id'], options['client_secret'])
+
         groups_from_yml = self.parse_yml_groups(groups)
         users_result = {}
 
@@ -120,12 +122,7 @@ class OneRosterConnector(object):
                     user_filter = inner_dict[group_name][user_group]
 
                     users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
-                    rh = RecordHandler(options, logger=None)
                     api_response = rh.parse_results(users_list, options['key_identifier'], extended_attributes)
-                    #api_response = RecordHandler.parse_results(options, users_list, options['key_identifier'], extended_attributes)
-
-                    # users_list = conn.get_user_list(group_filter, group_name, user_filter, options['key_identifier'], options['limit'])
-                    # api_response = self.results_parser.parse_results(users_list, options['key_identifier'], extended_attributes)
 
                     users_result = self.merge_users(users_result, api_response, user_group)
 
@@ -149,7 +146,7 @@ class OneRosterConnector(object):
         :rtype: iterable(dict)
         """
 
-        full_dict = dict()
+        full_dict = {}
 
         for text in groups_list:
             try:
@@ -191,7 +188,7 @@ class Connection:
         :type limit: str()
         :rtype parsed_json_list: list(str)
         """
-        parsed_json_list = list()
+        parsed_json_list = []
 
         if group_filter == 'courses':
             class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
@@ -210,7 +207,7 @@ class Connection:
 
                     for ignore, users in json.loads(response.content).items():
                         parsed_json_list.extend(users)
-                    if key == 'last':
+                    if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
 
@@ -229,7 +226,7 @@ class Connection:
 
                     for ignore, users in json.loads(response.content).items():
                         parsed_json_list.extend(users)
-                    if key == 'last':
+                    if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
 
@@ -248,7 +245,7 @@ class Connection:
         :type limit: str()
         :rtype sourced_id: str()
         """
-        keys = list()
+        keys = []
         if group_filter == 'schools':
             name_identifier = 'name'
             revised_key = 'orgs'
@@ -293,7 +290,7 @@ class Connection:
         :rtype class_list: list(str)
         """
 
-        class_list = dict()
+        class_list = {}
         try:
             key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
             key = 'first'
@@ -351,10 +348,10 @@ class RecordHandler:
         :type key_identifier: str()
         :rtype users_dict: dict(constructed user objects)
         """
-        users_dict = dict()
+        users_dict = {}
         for user in result_set:
-            if user['status'] == 'active':
-                returned_user = self.create_user_object(user, key_identifier, extended_attributes)
+            returned_user = self.create_user_object(user, key_identifier, extended_attributes)
+            if returned_user is not None:
                 users_dict[user[key_identifier]] = returned_user
         return users_dict
 
@@ -368,8 +365,10 @@ class RecordHandler:
         :type key_identifier: str()
         :rtype: formatted_user: dict(user object)
         """
+        attribute_warning = "No %s attribute (%s) for user with key: %s, defaulting to %s"
+
         key = record.get(key_identifier)
-        if key is None:
+        if key is None or record.get('status') != 'active':
             return
 
         email, last_attribute_name = self.user_email_formatter.generate_value(record)
@@ -378,40 +377,74 @@ class RecordHandler:
             if last_attribute_name is not None:
                 self.logger.warning('Skipping user with id %s: empty email attribute (%s)',  key, last_attribute_name)
 
-        formatted_user = dict()
-        source_attributes = dict()
+        source_attributes = {}
+        user = user_sync.connector.helper.create_blank_user()
+        source_attributes['email'] = email
+        user['email'] = email
 
-        #       User information available from One-Roster
-        source_attributes['sourcedId'] = record['sourcedId']
-        source_attributes['status'] = record['status']
-        source_attributes['dateLastModified'] = record['dateLastModified']
-        source_attributes['username'] = record['username']
-        source_attributes['userIds'] = record['userIds']
-        source_attributes['enabledUser'] = record['enabledUser']
-        source_attributes['givenName'] = formatted_user['firstname'] = record['givenName']
-        source_attributes['familyName'] = formatted_user['lastname'] = record['familyName']
-        source_attributes['middleName'] = record['middleName']
-        source_attributes['role'] = record['role']
-        source_attributes['identifier'] = record['identifier']
-        source_attributes['email'] = formatted_user['email'] = formatted_user['username'] = record['email']
-        source_attributes['sms'] = record['sms']
-        source_attributes['phone'] = record['phone']
-        source_attributes['agents'] = record['agents']
-        source_attributes['orgs'] = record['orgs']
-        source_attributes['grades'] = record['grades']
-        source_attributes['domain'] = formatted_user['domain'] = str(record['email']).split('@')[1]
-        source_attributes['password'] = record['password']
-        source_attributes[key_identifier] = record[key_identifier]
-        formatted_user['country'] = self.country_code
-        formatted_user['identity_type'] = self.user_identity_type
-        #Can be found in userIds if needed
-        #source_attributes['userId'] = user['userId']
-        #source_attributes['type'] = user['type']
+        identity_type, last_attribute_name = self.user_identity_type_formatter.generate_value(record)
+        if last_attribute_name and not identity_type:
+            self.logger.warning(attribute_warning, 'identity_type', last_attribute_name, key, self.user_identity_type)
+        source_attributes['identity_type'] = identity_type
+        if not identity_type:
+            user['identity_type'] = self.user_identity_type
+        else:
+            try:
+                user['identity_type'] = user_sync.identity_type.parse_identity_type(identity_type)
+            except AssertionException as e:
+                self.logger.warning('Skipping user with key %s: %s', e, key)
 
-        formatted_user['source_attributes'] = source_attributes
-        formatted_user['groups'] = set()
+        username, last_attribute_name = self.user_username_formatter.generate_value(record)
+        username = username.strip() if username else None
+        source_attributes['username'] = username
+        if username:
+            user['username'] = username
+        else:
+            if last_attribute_name:
+                self.logger.warning(attribute_warning, 'identity_type', last_attribute_name, email, key)
+            user['username'] = email
 
-        return formatted_user
+        domain, last_attribute_name = self.user_domain_formatter.generate_value(record)
+        domain = domain.strip() if domain else None
+        source_attributes['domain'] = domain
+        if domain:
+            user['domain'] = domain
+        elif username != email:
+            user['domain'] = email[email.find('@') + 1:]
+        elif last_attribute_name:
+            self.logger.warning('No domain attribute (%s) for user with dn: %s', last_attribute_name, key)
+
+        given_name_value, last_attribute_name = self.user_given_name_formatter.generate_value(record)
+        source_attributes['givenName'] = given_name_value
+        if given_name_value is not None:
+            user['firstname'] = given_name_value
+        elif last_attribute_name:
+            self.logger.warning('No given name attribute (%s) for user with dn: %s', last_attribute_name, key)
+        sn_value, last_attribute_name = self.user_surname_formatter.generate_value(record)
+        source_attributes['familyName'] = sn_value
+        if sn_value is not None:
+            user['lastname'] = sn_value
+        elif last_attribute_name:
+            self.logger.warning('No surname attribute (%s) for user with dn: %s', last_attribute_name, key)
+        c_value, last_attribute_name = self.user_country_code_formatter.generate_value(record)
+        source_attributes['country'] = c_value
+        if c_value is not None:
+            user['country'] = c_value.upper()
+        elif c_value is None:
+            user['country'] = self.country_code
+        elif last_attribute_name:
+            self.logger.warning('No country code attribute (%s) for user with dn: %s', last_attribute_name)
+
+        user['groups'] = set()
+
+        if extended_attributes is not None:
+            for extended_attribute in extended_attributes:
+                extended_attribute_value = OneRosterValueFormatter.get_attribute_value(record, extended_attribute)
+                source_attributes[extended_attribute] = extended_attribute_value
+
+        user['source_attributes'] = source_attributes.copy()
+
+        return user
 
 
 class OneRosterValueFormatter(object):
