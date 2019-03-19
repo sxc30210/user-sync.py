@@ -195,7 +195,12 @@ class Connection:
                 key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
                 key = 'first'
                 while key is not None:
-                    response = self.oneroster.make_roster_request(self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0') if key == 'first' else self.oneroster.make_roster_request(response.links[key]['url'])
+                    if key == 'first':
+                        call = self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0'
+                    else:
+                        call = response.links[key]['url']
+
+                    response = self.oneroster.make_roster_request(call)
                     if response.ok is False:
                         self.logger.warning(
                             'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
