@@ -159,9 +159,9 @@ class OneRosterConnector(object):
                 raise ValueError("Incorrect user_filter: " + user_filter + " .... must be either: students, teachers, or users")
 
             if group_filter not in full_dict:
-                full_dict[group_filter] = {group_name: dict()}
+                full_dict[group_filter] = {group_name: {}}
             elif group_name not in full_dict[group_filter]:
-                full_dict[group_filter][group_name] = dict()
+                full_dict[group_filter][group_name] = {}
 
             full_dict[group_filter][group_name].update({text: user_filter})
 
@@ -270,7 +270,7 @@ class Connection:
                     keys.append(key_id)
                     return keys[0]
 
-            if key == 'last':
+            if key == 'last' or response.headers._store['x-count'][1] < limit:
                 break
             key = 'next' if 'next' in response.links else 'last'
 
@@ -310,7 +310,7 @@ class Connection:
                     class_name = each_class[0]['title']
                     class_list[class_name] = class_key_id
 
-                if key == 'last':
+                if key == 'last' or response.headers._store['x-count'][1] < limit:
                     break
                 key = 'next' if 'next' in response.links else 'last'
 
