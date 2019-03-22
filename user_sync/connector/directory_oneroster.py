@@ -236,12 +236,9 @@ class Connection:
         :rtype sourced_id: str()
         """
         keys = []
-        if group_filter == 'schools':
-            name_identifier = 'name'
-            revised_key = 'orgs'
-        else:
-            name_identifier = 'title'
-            revised_key = group_filter
+
+        name_identifier, revised_key = ('name', 'orgs') if group_filter == 'schools' else ('title', group_filter)
+
         key = 'first'
         while key is not None:
             response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit
@@ -250,9 +247,7 @@ class Connection:
             if response.status_code is not 200:
                 raise ValueError('Non Successful Response'
                                  + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
-            parsed_json = json.loads(response.content)
-
-            for each_class in parsed_json.get(revised_key):
+            for each_class in json.loads(response.content).get(revised_key):
                 if self.encode_str(each_class[name_identifier]) == self.encode_str(group_name):
                     try:
                         key_id = each_class[key_identifier]
