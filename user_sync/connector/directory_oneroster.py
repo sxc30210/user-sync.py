@@ -39,11 +39,13 @@ def connector_metadata():
     }
     return metadata
 
+
 def connector_initialize(options):
     """
     :type options: dict
     """
     return OneRosterConnector(options)
+
 
 def connector_load_users_and_groups(state, groups=None, extended_attributes=None, all_users=True):
     """
@@ -106,7 +108,8 @@ class OneRosterConnector(object):
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
 
-                    response = conn.get_user_list(group_filter, group_name, user_filter, self.options['key_identifier'], self.options['limit'])
+                    response = conn.get_user_list(group_filter, group_name, user_filter, self.options['key_identifier'],
+                                                  self.options['limit'])
                     new_users_by_key = rh.parse_results(response, self.options['key_identifier'], extended_attributes)
 
                     for k, v in six.iteritems(new_users_by_key):
@@ -117,7 +120,8 @@ class OneRosterConnector(object):
 
     def parse_yml_groups(self, groups_list):
         """
-        description: parses group options from user-sync.config file into a nested dict with Key: group_filter for the outter dict, Value: being the nested
+        description: parses group options from user-sync.config file into a nested dict
+         with Key: group_filter for the outter dict, Value: being the nested
         dict {Key: group_name, Value: user_filter}
         :type groups_list: set(str) from user-sync-config-ldap.yml
         :rtype: iterable(dict)
@@ -129,20 +133,25 @@ class OneRosterConnector(object):
             try:
                 group_filter, group_name, user_filter = text.lower().split("::")
             except ValueError:
-                raise ValueError("Incorrect MockRoster Group Syntax: " + text + " \nRequires values for group_filter, group_name, user_filter. With '::' separating each value")
+                raise ValueError("Incorrect MockRoster Group Syntax: " + text +
+                                 " \nRequires values for group_filter, group_name, user_filter."
+                                 " With '::' separating each value")
             if group_filter not in ['classes', 'courses', 'schools']:
-                raise ValueError("Incorrect group_filter: " + group_filter + " .... must be either: classes, courses, or schools")
+                raise ValueError("Incorrect group_filter: " + group_filter +
+                                 " .... must be either: classes, courses, or schools")
             if user_filter not in ['students', 'teachers', 'users']:
-                raise ValueError("Incorrect user_filter: " + user_filter + " .... must be either: students, teachers, or users")
+                raise ValueError("Incorrect user_filter: " + user_filter +
+                                 " .... must be either: students, teachers, or users")
 
             if group_filter not in full_dict:
-                full_dict[group_filter] = {group_name: dict()}
+                full_dict[group_filter] = {group_name: {}}
             elif group_name not in full_dict[group_filter]:
-                full_dict[group_filter][group_name] = dict()
+                full_dict[group_filter][group_name] = {}
 
             full_dict[group_filter][group_name].update({text: user_filter})
 
         return full_dict
+
 
 class Connection:
     """ Starts connection and makes queries with One-Roster API"""
@@ -174,12 +183,13 @@ class Connection:
                 key = 'first'
                 while key is not None:
                     response = self.oneroster.make_roster_request(
-                        self.host_name + 'classes/' + key_id_classes + '/' + user_filter + '?limit=' + limit + '&offset=0') if key == 'first' \
+                        self.host_name + 'classes/' + key_id_classes + '/' + user_filter + '?limit=' + limit
+                        + '&offset=0') if key == 'first' \
                         else self.oneroster.make_roster_request(response.links[key]['url'])
                     if response.ok is False:
                         self.logger.warning(
-                            'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
-                            response.text)
+                            'Error fetching ' + user_filter + ' Found for: ' + group_name
+                            + "\nError Response Message:" + " " + response.text)
                         return {}
 
                     for ignore, users in json.loads(response.content).items():
@@ -194,16 +204,14 @@ class Connection:
                 key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
                 key = 'first'
                 while key is not None:
-                    if key == 'first':
-                        call = self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit + '&offset=0'
-                    else:
-                        call = response.links[key]['url']
+                    call = self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit\
+                           + '&offset=0' if key == 'first' else response.links[key]['url']
 
                     response = self.oneroster.make_roster_request(call)
                     if response.ok is False:
                         self.logger.warning(
-                            'Error fetching ' + user_filter + ' Found for: ' + group_name + "\nError Response Message:" + " " +
-                            response.text)
+                            'Error fetching ' + user_filter + ' Found for: ' + group_name
+                            + "\nError Response Message:" + " " + response.text)
                         return {}
 
                     for ignore, users in json.loads(response.content).items():
@@ -228,22 +236,18 @@ class Connection:
         :rtype sourced_id: str()
         """
         keys = []
-        if group_filter == 'schools':
-            name_identifier = 'name'
-            revised_key = 'orgs'
-        else:
-            name_identifier = 'title'
-            revised_key = group_filter
+
+        name_identifier, revised_key = ('name', 'orgs') if group_filter == 'schools' else ('title', group_filter)
+
         key = 'first'
         while key is not None:
-            response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit + '&offset=0') if key == 'first' \
+            response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit
+                                                          + '&offset=0') if key == 'first' \
                 else self.oneroster.make_roster_request(response.links[key]['url'])
             if response.status_code is not 200:
                 raise ValueError('Non Successful Response'
                                  + '  ' + 'status:' + str(response.status_code) + "\n" + response.text)
-            parsed_json = json.loads(response.content)
-
-            for each_class in parsed_json.get(revised_key):
+            for each_class in json.loads(response.content).get(revised_key):
                 if self.encode_str(each_class[name_identifier]) == self.encode_str(group_name):
                     try:
                         key_id = each_class[key_identifier]
@@ -252,7 +256,7 @@ class Connection:
                     keys.append(key_id)
                     return keys[0]
 
-            if key == 'last':
+            if key == 'last' or response.headers._store['x-count'][1] < limit:
                 break
             key = 'next' if 'next' in response.links else 'last'
 
@@ -277,7 +281,9 @@ class Connection:
             key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
             key = 'first'
             while key is not None:
-                response = self.oneroster.make_roster_request(self.host_name + 'courses' + '/' + key_id + '/' + 'classes' + '?limit=' + limit + '&offset=0') if key == 'first' \
+                response = self.oneroster.make_roster_request(self.host_name + 'courses' + '/' + key_id + '/'
+                                                              + 'classes' + '?limit=' + limit + '&offset=0')\
+                    if key == 'first' \
                     else self.oneroster.make_roster_request(response.links[key]['url'])
 
                 if response.ok is not True:
@@ -292,7 +298,7 @@ class Connection:
                     class_name = each_class[0]['title']
                     class_list[class_name] = class_key_id
 
-                if key == 'last':
+                if key == 'last' or response.headers._store['x-count'][1] < limit:
                     break
                 key = 'next' if 'next' in response.links else 'last'
 
@@ -336,7 +342,6 @@ class RecordHandler:
             if returned_user is not None:
                 users_dict[user[key_identifier]] = returned_user
         return users_dict
-
 
     def create_user_object(self, record, key_identifier, extended_attributes):
         """
