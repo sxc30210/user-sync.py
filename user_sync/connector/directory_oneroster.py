@@ -291,9 +291,8 @@ class Connection:
                     message = response.reason
                     raise ValueError('Non Successful Response'
                                      + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
-                parsed_json = json.loads(response.content)
 
-                for ignore, each_class in parsed_json.items():
+                for ignore, each_class in json.loads(response.content).items():
                     class_key_id = each_class[0][key_identifier]
                     class_name = each_class[0]['title']
                     class_list[class_name] = class_key_id
