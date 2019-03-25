@@ -112,9 +112,10 @@ class OneRosterConnector(object):
                                                   self.options['limit'])
                     new_users_by_key = rh.parse_results(response, self.options['key_identifier'], extended_attributes)
 
-                    for k, v in six.iteritems(new_users_by_key):
-                        if k not in users_by_key: users_by_key[k] = v
-                        users_by_key[k]['groups'].add(user_group)
+                    for key, value in six.iteritems(new_users_by_key):
+                        if key not in users_by_key:
+                            users_by_key[key] = value
+                        users_by_key[key]['groups'].add(user_group)
 
         return six.itervalues(users_by_key)
 
@@ -136,10 +137,10 @@ class OneRosterConnector(object):
                 raise ValueError("Incorrect MockRoster Group Syntax: " + text +
                                  " \nRequires values for group_filter, group_name, user_filter."
                                  " With '::' separating each value")
-            if group_filter not in ['classes', 'courses', 'schools']:
+            if group_filter not in {'classes', 'courses', 'schools'}:
                 raise ValueError("Incorrect group_filter: " + group_filter +
                                  " .... must be either: classes, courses, or schools")
-            if user_filter not in ['students', 'teachers', 'users']:
+            if user_filter not in {'students', 'teachers', 'users'}:
                 raise ValueError("Incorrect user_filter: " + user_filter +
                                  " .... must be either: students, teachers, or users")
 
@@ -317,6 +318,8 @@ class RecordHandler:
         self.logger = logger
         self.country_code = options['country_code']
 
+        self.source_attributes = {}
+        self.groups = set()
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
         self.user_identity_type_formatter = OneRosterValueFormatter(options['user_identity_type_format'])
         self.user_email_formatter = OneRosterValueFormatter(options['user_email_format'])
@@ -331,7 +334,6 @@ class RecordHandler:
         description: parses through user_list from API calls, to create final user objects
         :type result_set: list(dict())
         :type extended_attributes: list(str)
-        :type original_group: str()
         :type key_identifier: str()
         :rtype users_dict: dict(constructed user objects)
         """
@@ -347,7 +349,6 @@ class RecordHandler:
         description: Using user's API information to construct final user objects
         :type record: dict()
         :type extended_attributes: list(str)
-        :type original_group: str()
         :type key_identifier: str()
         :rtype: formatted_user: dict(user object)
         """
@@ -363,15 +364,14 @@ class RecordHandler:
             if last_attribute_name is not None:
                 self.logger.warning('Skipping user with id %s: empty email attribute (%s)',  key, last_attribute_name)
 
-        source_attributes = {}
         user = user_sync.connector.helper.create_blank_user()
-        source_attributes['email'] = email
+        self.source_attributes['email'] = email
         user['email'] = email
 
         identity_type, last_attribute_name = self.user_identity_type_formatter.generate_value(record)
         if last_attribute_name and not identity_type:
             self.logger.warning(attribute_warning, 'identity_type', last_attribute_name, key, self.user_identity_type)
-        source_attributes['identity_type'] = identity_type
+        self.source_attributes['identity_type'] = identity_type
         if not identity_type:
             user['identity_type'] = self.user_identity_type
         else:
@@ -382,7 +382,7 @@ class RecordHandler:
 
         username, last_attribute_name = self.user_username_formatter.generate_value(record)
         username = username.strip() if username else None
-        source_attributes['username'] = username
+        self.source_attributes['username'] = username
         if username:
             user['username'] = username
         else:
@@ -392,7 +392,7 @@ class RecordHandler:
 
         domain, last_attribute_name = self.user_domain_formatter.generate_value(record)
         domain = domain.strip() if domain else None
-        source_attributes['domain'] = domain
+        self.source_attributes['domain'] = domain
         if domain:
             user['domain'] = domain
         elif username != email:
@@ -401,19 +401,19 @@ class RecordHandler:
             self.logger.warning('No domain attribute (%s) for user with dn: %s', last_attribute_name, key)
 
         given_name_value, last_attribute_name = self.user_given_name_formatter.generate_value(record)
-        source_attributes['givenName'] = given_name_value
+        self.source_attributes['givenName'] = given_name_value
         if given_name_value is not None:
             user['firstname'] = given_name_value
         elif last_attribute_name:
             self.logger.warning('No given name attribute (%s) for user with dn: %s', last_attribute_name, key)
         sn_value, last_attribute_name = self.user_surname_formatter.generate_value(record)
-        source_attributes['familyName'] = sn_value
+        self.source_attributes['familyName'] = sn_value
         if sn_value is not None:
             user['lastname'] = sn_value
         elif last_attribute_name:
             self.logger.warning('No surname attribute (%s) for user with dn: %s', last_attribute_name, key)
         c_value, last_attribute_name = self.user_country_code_formatter.generate_value(record)
-        source_attributes['country'] = c_value
+        self.source_attributes['country'] = c_value
         if c_value is not None:
             user['country'] = c_value.upper()
         elif c_value is None:
@@ -421,14 +421,14 @@ class RecordHandler:
         elif last_attribute_name:
             self.logger.warning('No country code attribute (%s) for user with dn: %s', last_attribute_name)
 
-        user['groups'] = set()
+        user['groups'] = self.groups
 
         if extended_attributes is not None:
             for extended_attribute in extended_attributes:
                 extended_attribute_value = OneRosterValueFormatter.get_attribute_value(record, extended_attribute)
-                source_attributes[extended_attribute] = extended_attribute_value
+                self.source_attributes[extended_attribute] = extended_attribute_value
 
-        user['source_attributes'] = source_attributes.copy()
+        user['source_attributes'] = self.source_attributes.copy()
 
         return user
 
