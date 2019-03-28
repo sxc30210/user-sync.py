@@ -88,7 +88,7 @@ class OneRosterConnector(object):
 
     def load_users_and_groups(self, groups, extended_attributes, all_users):
         """
-        description: Leverages class components to return and send a user list to UMAPI
+        description: Leverages class components to return a user list, that will be sent to UMAPI
         :type groups: list(str)
         :type extended_attributes: list(str)
         :type all_users: bool
@@ -162,10 +162,17 @@ class Connection:
 
     def get_all_users(self, all_users_filter, limit):
         """
-        :param limit:
-        :return:
+        :description: returns list of all_users specified from all_users flag
+        :param all_users_filter: str(), will either be users, students, or teachers
+        :param limit: str()
+        :rtype: users_list_from_api_requests: list(str)
         """
-        parsed_json_list = []
+        if all_users_filter not in {'users', 'teachers', 'students'}:
+            self.logger.warning(
+                'Error -- Incorrect selection made for all_users_filter flag: ' + all_users_filter +
+                ' .... must be either: users, teachers, or students.... skipping all_users_filter')
+            return {}
+        users_list_from_api_requests = []
         key = 'first'
         while key is not None:
             call = self.host_name + '/' + all_users_filter + '?limit=' + limit \
@@ -177,23 +184,23 @@ class Connection:
                     + "\nError Response Message:" + " " + response.text)
                 return {}
             for ignore, users in json.loads(response.content).items():
-                parsed_json_list.extend(users)
+                users_list_from_api_requests.extend(users)
             if key == 'last' or response.headers._store['x-count'][1] < limit:
                 break
             key = 'next' if 'next' in response.links else 'last'
-        return parsed_json_list
+        return users_list_from_api_requests
 
     def get_mapped_users(self, group_filter, group_name, user_filter, key_identifier, limit):
         """
-        description:
+        description: returns list of users according to mapping rules specified on user-sync-config.yml
         :type group_filter: str()
         :type group_name: str()
         :type user_filter: str()
         :type key_identifier: str()
         :type limit: str()
-        :rtype parsed_json_list: list(str)
+        :rtype users_list_from_api_requests: list(str)
         """
-        parsed_json_list = []
+        users_list_from_api_requests = []
         if group_filter == 'courses':
             class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
             for each_class in class_list:
@@ -210,7 +217,7 @@ class Connection:
                             + "\nError Response Message:" + " " + response.text)
                         return {}
                     for ignore, users in json.loads(response.content).items():
-                        parsed_json_list.extend(users)
+                        users_list_from_api_requests.extend(users)
                     if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
@@ -228,14 +235,14 @@ class Connection:
                             + "\nError Response Message:" + " " + response.text)
                         return {}
                     for ignore, users in json.loads(response.content).items():
-                        parsed_json_list.extend(users)
+                        users_list_from_api_requests.extend(users)
                     if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
             except ValueError as e:
                 self.logger.warning(e)
                 return {}
-        return parsed_json_list
+        return users_list_from_api_requests
 
     def get_key_identifier(self, group_filter, group_name, key_identifier, limit):
         """
@@ -244,7 +251,7 @@ class Connection:
         :type group_name: str()
         :type key_identifier: str()
         :type limit: str()
-        :rtype sourced_id: str()
+        :rtype key_identifier: str()
         """
         keys = []
         name_identifier, revised_key = ('name', 'orgs') if group_filter == 'schools' else ('title', group_filter)
@@ -275,7 +282,7 @@ class Connection:
 
     def get_classlist_for_course(self, group_name, key_identifier, limit):
         """
-        description: returns list of sourceIds for classes of a course (group_name)
+        description: returns list of key_identifiers for the classes of a course (group_name)
         :type group_name: str()
         :type key_identifier: str()
         :type limit: str()
