@@ -44,6 +44,9 @@ client_secret: '10332e330b2e364020179021'
 #Limit, number of results to return during each query, Implementations of One Roster default at 100
 limit: '100'
 
+#All users filter
+all_users_filter: 'users'
+
 #Key name to the response count of the HTTP request, found in Response.headers._store
 #header_store_count_key: 'x-count'
 

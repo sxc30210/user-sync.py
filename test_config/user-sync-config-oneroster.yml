@@ -180,21 +180,21 @@ directory_users:
 #      adobe_groups:
 #        - "Classlink"
 #
-    - directory_group: "courses::English 9::students"
-      adobe_groups:
-        - "Classlink"
-
-    - directory_group: "courses::English 9::teachers"
-      adobe_groups:
-        - "Classlink"
-
-    - directory_group: "classes::ELA 6 (6A ELA)::students"
-      adobe_groups:
-        - "Classlink"
-
-    - directory_group: "classes::ELA 6 (6A ELA)::teachers"
-      adobe_groups:
-        - "Classlink"
+#    - directory_group: "courses::English 9::students"
+#      adobe_groups:
+#        - "Classlink"
+#
+#    - directory_group: "courses::English 9::teachers"
+#      adobe_groups:
+#        - "Classlink"
+#
+#    - directory_group: "classes::ELA 6 (6A ELA)::students"
+#      adobe_groups:
+#        - "Classlink"
+#
+#    - directory_group: "classes::ELA 6 (6A ELA)::teachers"
+#      adobe_groups:
+#        - "Classlink"
 
     - directory_group: "schools::cLasslink Elementary schOOl::students"
       adobe_groups:

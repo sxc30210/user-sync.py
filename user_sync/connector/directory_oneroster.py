@@ -62,12 +62,12 @@ class OneRosterConnector(object):
     name = 'oneroster'
 
     def __init__(self, caller_options):
-
         caller_config = user_sync.config.DictConfig('%s configuration' % self.name, caller_options)
         builder = user_sync.config.OptionsBuilder(caller_config)
         builder.require_string_value('client_id')
         builder.require_string_value('client_secret')
         builder.require_string_value('host')
+        builder.set_string_value('all_users_filter', 'users')
         builder.set_string_value('limit', 1000)
         builder.set_string_value('key_identifier', 'sourcedId')
         builder.set_string_value('logger_name', self.name)
@@ -81,7 +81,6 @@ class OneRosterConnector(object):
         builder.set_string_value('user_domain_format', None)
         builder.set_string_value('user_identity_type', None)
         builder.set_string_value('user_identity_type_format', None)
-
         self.options = builder.get_options()
         self.logger = user_sync.connector.helper.create_logger(self.options)
         caller_config.report_unused_values(self.logger)
@@ -95,27 +94,33 @@ class OneRosterConnector(object):
         :type all_users: bool
         :rtype (bool, iterable(dict))
         """
-        
         rh = RecordHandler(self.options, logger=self.logger)
         conn = Connection(self.logger, self.options)
-
         groups_from_yml = self.parse_yml_groups(groups)
         users_by_key = {}
-
         for group_filter in groups_from_yml:
             inner_dict = groups_from_yml[group_filter]
             for group_name in inner_dict:
                 for user_group in inner_dict[group_name]:
                     user_filter = inner_dict[group_name][user_group]
-
-                    response = conn.get_user_list(group_filter, group_name, user_filter, self.options['key_identifier'],
-                                                  self.options['limit'])
+                    response = conn.get_mapped_users(
+                        group_filter, group_name, user_filter, self.options['key_identifier'], self.options['limit'])
                     new_users_by_key = rh.parse_results(response, self.options['key_identifier'], extended_attributes)
-
                     for key, value in six.iteritems(new_users_by_key):
                         if key not in users_by_key:
                             users_by_key[key] = value
                         users_by_key[key]['groups'].add(user_group)
+        # if all_users:
+        #     response = conn.get_all_users(self.options['all_users_filter'], self.options['limit'])
+        #     new_all_users = rh.parse_results(response, self.options['key_identifier'], extended_attributes)
+        #     for key, value in six.iteritems(new_all_users):
+        #         if key not in users_by_key:
+        #             users_by_key[key] = value
+
+        # with open('not_working.txt', 'w') as f:
+        #     for item, value in users_by_key.items():
+        #         f.write("%s\n" % value)
+
 
         return six.itervalues(users_by_key)
 
@@ -127,9 +132,7 @@ class OneRosterConnector(object):
         :type groups_list: set(str) from user-sync-config-ldap.yml
         :rtype: iterable(dict)
         """
-
         full_dict = {}
-
         for text in groups_list:
             try:
                 group_filter, group_name, user_filter = text.lower().split("::")
@@ -143,14 +146,11 @@ class OneRosterConnector(object):
             if user_filter not in {'students', 'teachers', 'users'}:
                 raise ValueError("Incorrect user_filter: " + user_filter +
                                  " .... must be either: students, teachers, or users")
-
             if group_filter not in full_dict:
                 full_dict[group_filter] = {group_name: {}}
             elif group_name not in full_dict[group_filter]:
                 full_dict[group_filter][group_name] = {}
-
             full_dict[group_filter][group_name].update({text: user_filter})
-
         return full_dict
 
 
@@ -165,7 +165,30 @@ class Connection:
         self.client_secret = options['client_secret']
         self.oneroster = OneRoster(self.client_id, self.client_secret)
 
-    def get_user_list(self, group_filter, group_name, user_filter, key_identifier, limit):
+    def get_all_users(self, all_users_filter, limit):
+        """
+        :param limit:
+        :return:
+        """
+        parsed_json_list = []
+        key = 'first'
+        while key is not None:
+            call = self.host_name + '/' + all_users_filter + '?limit=' + limit \
+                   + '&offset=0' if key == 'first' else response.links[key]['url']
+            response = self.oneroster.make_roster_request(call)
+            if response.ok is False:
+                self.logger.warning(
+                    'Error fetching all users found for: ' + all_users_filter
+                    + "\nError Response Message:" + " " + response.text)
+                return {}
+            for ignore, users in json.loads(response.content).items():
+                parsed_json_list.extend(users)
+            if key == 'last' or response.headers._store['x-count'][1] < limit:
+                break
+            key = 'next' if 'next' in response.links else 'last'
+        return parsed_json_list
+
+    def get_mapped_users(self, group_filter, group_name, user_filter, key_identifier, limit):
         """
         description:
         :type group_filter: str()
@@ -176,7 +199,6 @@ class Connection:
         :rtype parsed_json_list: list(str)
         """
         parsed_json_list = []
-
         if group_filter == 'courses':
             class_list = self.get_classlist_for_course(group_name, key_identifier, limit)
             for each_class in class_list:
@@ -192,39 +214,32 @@ class Connection:
                             'Error fetching ' + user_filter + ' Found for: ' + group_name
                             + "\nError Response Message:" + " " + response.text)
                         return {}
-
                     for ignore, users in json.loads(response.content).items():
                         parsed_json_list.extend(users)
                     if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
-
         else:
             try:
-
                 key_id = self.get_key_identifier(group_filter, group_name, key_identifier, limit)
                 key = 'first'
                 while key is not None:
                     call = self.host_name + group_filter + '/' + key_id + '/' + user_filter + '?limit=' + limit\
                            + '&offset=0' if key == 'first' else response.links[key]['url']
-
                     response = self.oneroster.make_roster_request(call)
                     if response.ok is False:
                         self.logger.warning(
                             'Error fetching ' + user_filter + ' Found for: ' + group_name
                             + "\nError Response Message:" + " " + response.text)
                         return {}
-
                     for ignore, users in json.loads(response.content).items():
                         parsed_json_list.extend(users)
                     if key == 'last' or response.headers._store['x-count'][1] < limit:
                         break
                     key = 'next' if 'next' in response.links else 'last'
-
             except ValueError as e:
                 self.logger.warning(e)
                 return {}
-
         return parsed_json_list
 
     def get_key_identifier(self, group_filter, group_name, key_identifier, limit):
@@ -237,9 +252,7 @@ class Connection:
         :rtype sourced_id: str()
         """
         keys = []
-
         name_identifier, revised_key = ('name', 'orgs') if group_filter == 'schools' else ('title', group_filter)
-
         key = 'first'
         while key is not None:
             response = self.oneroster.make_roster_request(self.host_name + group_filter + '?limit=' + limit
@@ -256,16 +269,13 @@ class Connection:
                         raise ValueError('Key identifier: ' + key_identifier + ' not a valid identifier')
                     keys.append(key_id)
                     return keys[0]
-
             if key == 'last' or response.headers._store['x-count'][1] < limit:
                 break
             key = 'next' if 'next' in response.links else 'last'
-
         if len(keys) == 0:
             raise ValueError('No key ids found for: ' + " " + group_filter + ":" + " " + group_name)
         elif len(keys) > 1:
             raise ValueError('Duplicate ID found: ' + " " + group_filter + ":" + " " + group_name)
-
         return keys[0]
 
     def get_classlist_for_course(self, group_name, key_identifier, limit):
@@ -276,7 +286,6 @@ class Connection:
         :type limit: str()
         :rtype class_list: list(str)
         """
-
         class_list = {}
         try:
             key_id = self.get_key_identifier('courses', group_name, key_identifier, limit)
@@ -286,25 +295,20 @@ class Connection:
                                                               + 'classes' + '?limit=' + limit + '&offset=0')\
                     if key == 'first' \
                     else self.oneroster.make_roster_request(response.links[key]['url'])
-
                 if response.ok is not True:
                     status = response.status_code
                     message = response.reason
                     raise ValueError('Non Successful Response'
                                      + '  ' + 'status:' + str(status) + '  ' + 'message:' + str(message))
-
                 for ignore, each_class in json.loads(response.content).items():
                     class_key_id = each_class[0][key_identifier]
                     class_name = each_class[0]['title']
                     class_list[class_name] = class_key_id
-
                 if key == 'last' or response.headers._store['x-count'][1] < limit:
                     break
                 key = 'next' if 'next' in response.links else 'last'
-
         except ValueError as e:
             self.logger.warning(e)
-
         return class_list
 
     def encode_str(self, text):
@@ -312,14 +316,9 @@ class Connection:
 
 
 class RecordHandler:
-
     def __init__(self, options, logger):
-
         self.logger = logger
         self.country_code = options['country_code']
-
-        self.source_attributes = {}
-        self.groups = set()
         self.user_identity_type = user_sync.identity_type.parse_identity_type(options['user_identity_type'])
         self.user_identity_type_formatter = OneRosterValueFormatter(options['user_identity_type_format'])
         self.user_email_formatter = OneRosterValueFormatter(options['user_email_format'])
@@ -353,25 +352,22 @@ class RecordHandler:
         :rtype: formatted_user: dict(user object)
         """
         attribute_warning = "No %s attribute (%s) for user with key: %s, defaulting to %s"
-
+        source_attributes = {}
         key = record.get(key_identifier)
         if key is None or record.get('status') != 'active':
             return
-
         email, last_attribute_name = self.user_email_formatter.generate_value(record)
         email = email.strip() if email else None
         if not email:
             if last_attribute_name is not None:
                 self.logger.warning('Skipping user with id %s: empty email attribute (%s)',  key, last_attribute_name)
-
         user = user_sync.connector.helper.create_blank_user()
-        self.source_attributes['email'] = email
+        source_attributes['email'] = email
         user['email'] = email
-
         identity_type, last_attribute_name = self.user_identity_type_formatter.generate_value(record)
         if last_attribute_name and not identity_type:
             self.logger.warning(attribute_warning, 'identity_type', last_attribute_name, key, self.user_identity_type)
-        self.source_attributes['identity_type'] = identity_type
+        source_attributes['identity_type'] = identity_type
         if not identity_type:
             user['identity_type'] = self.user_identity_type
         else:
@@ -379,57 +375,50 @@ class RecordHandler:
                 user['identity_type'] = user_sync.identity_type.parse_identity_type(identity_type)
             except AssertionException as e:
                 self.logger.warning('Skipping user with key %s: %s', e, key)
-
         username, last_attribute_name = self.user_username_formatter.generate_value(record)
         username = username.strip() if username else None
-        self.source_attributes['username'] = username
+        source_attributes['username'] = username
         if username:
             user['username'] = username
         else:
             if last_attribute_name:
                 self.logger.warning(attribute_warning, 'identity_type', last_attribute_name, email, key)
             user['username'] = email
-
         domain, last_attribute_name = self.user_domain_formatter.generate_value(record)
         domain = domain.strip() if domain else None
-        self.source_attributes['domain'] = domain
+        source_attributes['domain'] = domain
         if domain:
             user['domain'] = domain
         elif username != email:
             user['domain'] = email[email.find('@') + 1:]
         elif last_attribute_name:
             self.logger.warning('No domain attribute (%s) for user with dn: %s', last_attribute_name, key)
-
         given_name_value, last_attribute_name = self.user_given_name_formatter.generate_value(record)
-        self.source_attributes['givenName'] = given_name_value
+        source_attributes['givenName'] = given_name_value
         if given_name_value is not None:
             user['firstname'] = given_name_value
         elif last_attribute_name:
             self.logger.warning('No given name attribute (%s) for user with dn: %s', last_attribute_name, key)
         sn_value, last_attribute_name = self.user_surname_formatter.generate_value(record)
-        self.source_attributes['familyName'] = sn_value
+        source_attributes['familyName'] = sn_value
         if sn_value is not None:
             user['lastname'] = sn_value
         elif last_attribute_name:
             self.logger.warning('No surname attribute (%s) for user with dn: %s', last_attribute_name, key)
         c_value, last_attribute_name = self.user_country_code_formatter.generate_value(record)
-        self.source_attributes['country'] = c_value
+        source_attributes['country'] = c_value
         if c_value is not None:
             user['country'] = c_value.upper()
         elif c_value is None:
             user['country'] = self.country_code
         elif last_attribute_name:
             self.logger.warning('No country code attribute (%s) for user with dn: %s', last_attribute_name)
-
-        user['groups'] = self.groups
-
+        user['groups'] = set()
         if extended_attributes is not None:
             for extended_attribute in extended_attributes:
                 extended_attribute_value = OneRosterValueFormatter.get_attribute_value(record, extended_attribute)
-                self.source_attributes[extended_attribute] = extended_attribute_value
-
-        user['source_attributes'] = self.source_attributes.copy()
-
+                source_attributes[extended_attribute] = extended_attribute_value
+        user['source_attributes'] = source_attributes.copy()
         return user
 
 
@@ -486,10 +475,8 @@ class OneRosterValueFormatter(object):
         if attribute_values:
             try:
                 if first_only or len(attribute_values) == 1:
-
                     attr = attribute_values if isinstance(attribute_values, six.string_types) else attribute_values[0]
                     return attr if isinstance(attr, six.string_types) else attr.decode(cls.encoding)
-
                 else:
                     return [(val if isinstance(val, six.string_types)
                              else val.decode(cls.encoding)) for val in attribute_values]
