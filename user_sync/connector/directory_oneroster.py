@@ -110,17 +110,12 @@ class OneRosterConnector(object):
                         if key not in users_by_key:
                             users_by_key[key] = value
                         users_by_key[key]['groups'].add(user_group)
-        # if all_users:
-        #     response = conn.get_all_users(self.options['all_users_filter'], self.options['limit'])
-        #     new_all_users = rh.parse_results(response, self.options['key_identifier'], extended_attributes)
-        #     for key, value in six.iteritems(new_all_users):
-        #         if key not in users_by_key:
-        #             users_by_key[key] = value
-
-        # with open('not_working.txt', 'w') as f:
-        #     for item, value in users_by_key.items():
-        #         f.write("%s\n" % value)
-
+        if all_users:
+            response = conn.get_all_users(self.options['all_users_filter'], self.options['limit'])
+            new_all_users = rh.parse_results(response, self.options['key_identifier'], extended_attributes)
+            for key, value in six.iteritems(new_all_users):
+                if key not in users_by_key:
+                    users_by_key[key] = value
 
         return six.itervalues(users_by_key)
 
