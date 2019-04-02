@@ -102,3 +102,6 @@ test_config/connector-umapi.yml
 test_config/extension-config.yml
 test_config/logs/
 
+# Lockfile
+user_sync/lockfile
+
