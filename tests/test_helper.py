@@ -1,86 +1,72 @@
 import os
-import logging
+
 import pytest
-import user_sync.helper as help
-import csv
-from six import StringIO
+from conftest import compare_list
+import user_sync.helper
 
-#Test CSVAdapter class
-field_names = ['firstname', 'lastname', 'email', 'country', 'groups', 'type', 'username', 'domain']
-user_list = [
-        {'firstname': 'John', 'lastname': 'Smith', 'email': 'jsmith@example.com', 'country': 'US',
-         'groups': 'AdobeCC-All', 'type': 'enterpriseID', 'username': None, 'domain': None},
-        {'firstname': 'Jane', 'lastname': 'Doe', 'email': 'jdoe@example.com', 'country': 'US', 'groups': 'AdobeCC-All',
-         'type': 'federatedID', 'username': None, 'domain': None},
-        {'firstname': 'Richard', 'lastname': 'Roe', 'email': 'rroe@example.com', 'country': 'US',
-         'groups': 'AdobeCC-All', 'type': None, 'username': None, 'domain': None},
-        {'firstname': '', 'lastname': 'Dorathy', 'email': None, 'country': None, 'groups': None, 'type': None,
-         'username': None, 'domain': None}
-    ]
-adapter = help.CSVAdapter
+@pytest.fixture()
+def field_names():
+    return ['firstname', 'lastname', 'email', 'country', 'groups', 'type', 'username', 'domain']
 
-def test_open_csv_file():
-
-    mode_r = 'r'
-    mode_w = 'w'
-    mode_invalid = 'i'
-    filename  = 'blank.csv'
-    file = open(filename, 'w')
-    file.close()
-    assert adapter.open_csv_file(filename, mode_r)
-    assert adapter.open_csv_file(filename, mode_w)
-
-    with pytest.raises(ValueError) :
-        adapter.open_csv_file(filename, mode_invalid)
-    os.remove(filename)
-
-def test_guess_delimiter_from_filename():
-
-    filename1 = 'helper_test.csv'
-    assert adapter.guess_delimiter_from_filename(filename1) == ','
-
-    filename2 = 'test.tsv'
-    assert adapter.guess_delimiter_from_filename(filename2) == '\t'
-
-    #use a wrong delimiter; should default to '\t'
-    filename3 = 'test.mtv'
-    assert adapter.guess_delimiter_from_filename(filename3) == '\t'
-
-
-def test_read_csv_rows():
-    filename = 'test_read.csv'
-    file = open(filename, 'w')
-    file.write('firstname,lastname,email,country,groups,type,username,domain\n')
-    file.write('John,Smith,jsmith@example.com,US,"AdobeCC-All",enterpriseID\n')
-    file.write('Jane,Doe,jdoe@example.com,US,"AdobeCC-All",federatedID\n')
-    file.write('Richard,Roe,rroe@example.com,US,"AdobeCC-All"\n')
-    file.write(',Dorathy')
-    file.close()
-    csv_yield = list(adapter.read_csv_rows(filename, field_names))
-    reduced_output = [dict(e) for e in csv_yield]
-    assert reduced_output == user_list
-    os.remove(filename)
-
-def test_write_csv_rows():
-
-    final_user_list = [
+@pytest.fixture()
+def user_list():
+    return [
         {'firstname': 'John', 'lastname': 'Smith', 'email': 'jsmith@example.com', 'country': 'US',
          'groups': 'AdobeCC-All', 'type': 'enterpriseID', 'username': '', 'domain': ''},
         {'firstname': 'Jane', 'lastname': 'Doe', 'email': 'jdoe@example.com', 'country': 'US', 'groups': 'AdobeCC-All',
          'type': 'federatedID', 'username': '', 'domain': ''},
         {'firstname': 'Richard', 'lastname': 'Roe', 'email': 'rroe@example.com', 'country': 'US',
          'groups': 'AdobeCC-All', 'type': '', 'username': '', 'domain': ''},
-        {'firstname': '', 'lastname': 'Dorathy', 'email': '', 'country': '', 'groups': '', 'type': '', 'username': '',
-         'domain': ''}
+        {'firstname': '', 'lastname': 'Dorathy', 'email': '', 'country': '', 'groups': '', 'type': '',
+         'username': '', 'domain': ''}
     ]
+
+@pytest.fixture()
+def adapter():
+    return user_sync.helper.CSVAdapter()
+
+def test_open_csv_file(adapter):
+    filename = 'blank.csv'
+    open(filename, 'w').close()
+    assert adapter.open_csv_file(filename, 'r')
+    assert adapter.open_csv_file(filename, 'w')
+
+    with pytest.raises(ValueError):
+        adapter.open_csv_file(filename, 'invalid')
+    os.remove(filename)
+
+
+def test_guess_delimiter_from_filename(adapter):
+    assert adapter.guess_delimiter_from_filename('helper_test.csv') == ','
+    assert adapter.guess_delimiter_from_filename('test.tsv') == '\t'
+    assert adapter.guess_delimiter_from_filename('test.mtv') == '\t'
+
+def test_read_csv_rows(adapter, user_list, field_names):
+    filename = 'test_read.csv'
+    write_users_to_file(filename, field_names, user_list)
+
+    csv_yield = list(adapter.read_csv_rows(filename, field_names))
+    reduced_output = [dict(e) for e in csv_yield]
+    assert compare_list(reduced_output, user_list)
+    os.remove(filename)
+
+def test_write_csv_rows(adapter, user_list, field_names):
     filename = 'test.csv'
     adapter.write_csv_rows(filename, field_names, user_list)
     csv_yield = list(adapter.read_csv_rows(filename, field_names))
     reduced_output = [dict(e) for e in csv_yield]
-    assert reduced_output == final_user_list
-
-    adapter.write_csv_rows(filename, field_names, final_user_list)
-    csv_yield = list(adapter.read_csv_rows(filename, field_names))
-    reduced_output = [dict(e) for e in csv_yield]
-    assert reduced_output == final_user_list
+    assert compare_list(reduced_output, user_list)
     os.remove(filename)
+
+def write_users_to_file(filename, field_names, user_list):
+    file = open(filename, 'w')
+    file.write(",".join(field_names) + "\n")
+    for u in user_list:
+        line = ""
+        for c, f in enumerate(field_names):
+            if f in u:
+                line += u[f]
+            if c < len(field_names) - 1:
+                line += ","
+        file.write(line + "\n")
+    file.close()
