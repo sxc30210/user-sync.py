@@ -1,6 +1,5 @@
 import os
 import pytest
-import psutil
 import user_sync.lockfile as lock
 
 
